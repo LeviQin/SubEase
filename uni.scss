@@ -1,0 +1,91 @@
+/* ═══════════════════════════════════════════
+   SubEase Design Tokens — Apple Lite
+   ═══════════════════════════════════════════ */
+
+/* Primitive Colors */
+$color-accent: #5770ff;
+$color-accent-dark: #3f57d9;
+$color-accent-soft: #eef2ff;
+$color-success: #34c759;
+$color-warning: #ff9f0a;
+$color-danger: #ff3b30;
+$color-danger-soft: #fff1f0;
+$color-success-soft: #e9f9ee;
+$color-warning-soft: #fff6e8;
+
+/* Neutral Scale */
+$neutral-0: #ffffff;
+$neutral-25: #fbfbfd;
+$neutral-50: #f8f8fa;
+$neutral-100: #f2f2f7;
+$neutral-150: #ececf1;
+$neutral-200: #e3e4ea;
+$neutral-300: #d1d3dc;
+$neutral-400: #a8acb9;
+$neutral-500: #8e8e93;
+$neutral-600: #636366;
+$neutral-700: #48484a;
+$neutral-800: #2c2c2e;
+$neutral-900: #1c1c1e;
+
+/* Semantic mappings */
+$bg-root: $neutral-100;
+$bg-grouped: $neutral-100;
+$bg-elevated: $neutral-0;
+$bg-subtle: $neutral-50;
+$bg-muted: rgba(118, 118, 128, 0.12);
+$bg-overlay: rgba(10, 10, 18, 0.24);
+
+$text-primary: $neutral-900;
+$text-secondary: $neutral-600;
+$text-tertiary: $neutral-500;
+$text-quaternary: $neutral-400;
+$text-inverse: $neutral-0;
+
+$border-light: rgba(60, 60, 67, 0.08);
+$border-medium: rgba(60, 60, 67, 0.14);
+$border-strong: rgba(60, 60, 67, 0.2);
+
+/* Shadows — soft and neutral */
+$shadow-xs: 0 2rpx 8rpx rgba(15, 23, 42, 0.04);
+$shadow-sm: 0 8rpx 28rpx rgba(15, 23, 42, 0.06);
+$shadow-md: 0 12rpx 36rpx rgba(15, 23, 42, 0.08);
+$shadow-lg: 0 20rpx 56rpx rgba(15, 23, 42, 0.12);
+$shadow-xl: 0 28rpx 72rpx rgba(15, 23, 42, 0.18);
+
+/* Radii */
+$radius-xs: 16rpx;
+$radius-sm: 22rpx;
+$radius-md: 28rpx;
+$radius-lg: 36rpx;
+$radius-xl: 44rpx;
+$radius-sheet: 48rpx;
+$radius-full: 999rpx;
+
+/* Spacing scale */
+$space-1: 8rpx;
+$space-2: 16rpx;
+$space-3: 24rpx;
+$space-4: 32rpx;
+$space-5: 40rpx;
+$space-6: 48rpx;
+
+/* Transitions */
+$ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+$ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+$duration-fast: 0.15s;
+$duration-normal: 0.25s;
+$duration-slow: 0.35s;
+
+/* ═══════════════════════════════════════════
+   CSS Custom Properties 说明（重要）
+
+   微信小程序 wxss 不支持 :root 选择器，且 uni.scss 会被注入到每个
+   组件/页面的 <style> 中并附加 scoped 属性，编译结果形如
+   `page.data-v-xxx` / `.data-v-xxx:root`，无法命中页面根节点，
+   导致所有 var(--xxx) 失效、样式整体崩塌。
+
+   因此 CSS 变量（--app-bg、--accent 等）统一定义在 App.vue 全局
+   非 scoped 样式的 `page` 选择器中（编译进 app.wxss，可被组件继承）。
+   此处仅保留 SCSS 变量，供 App.vue 插值生成 CSS 变量。
+   ═══════════════════════════════════════════ */

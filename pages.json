@@ -1,0 +1,37 @@
+{
+	"pages": [ //pages数组中第一项表示应用启动页，参考：https://uniapp.dcloud.io/collocation/pages
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationStyle": "custom",
+				"disableScroll": true,
+				"enablePullDownRefresh": true
+			}
+		},
+		{
+			"path": "pages/legal/index",
+			"style": {
+				"navigationBarTitleText": "关于期账本"
+			}
+		},
+		{
+			"path": "pages/legal/agreement",
+			"style": {
+				"navigationBarTitleText": "用户服务协议"
+			}
+		},
+		{
+			"path": "pages/legal/privacy",
+			"style": {
+				"navigationBarTitleText": "隐私政策"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "期账本",
+		"navigationBarBackgroundColor": "#F2F2F7",
+		"backgroundColor": "#F2F2F7"
+	},
+	"uniIdRouter": {}
+}
