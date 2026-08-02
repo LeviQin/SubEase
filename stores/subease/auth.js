@@ -4,6 +4,13 @@ import { getCurrentUser, wxLogin, refreshAccessToken } from '../../api/subease/a
 const AUTH_STORAGE_KEY = 'subease-auth'
 const MANUAL_LOGOUT_STORAGE_KEY = 'subease-manual-logout'
 
+function isUnauthorized(error) {
+  const response = error && error.response
+  const statusCode = response && response.statusCode
+  const code = response && response.data && response.data.code
+  return statusCode === 401 || code === 401
+}
+
 function loadPersistedState() {
   try {
     const raw = uni.getStorageSync(AUTH_STORAGE_KEY)
@@ -198,9 +205,11 @@ export const useSubeaseAuthStore = defineStore('subeaseAuth', {
             await this.fetchCurrentUser()
           } catch (error) {
             console.error('[SubeaseAuthStore] 拉取当前用户资料失败', error)
-            this.clearAuth()
             this.authReady = true
-            throw error
+            if (isUnauthorized(error)) {
+              this.clearAuth()
+            }
+            return null
           }
         }
         this.authReady = true
@@ -253,7 +262,9 @@ export const useSubeaseAuthStore = defineStore('subeaseAuth', {
           return this.accessToken
         } catch (error) {
           console.error('[SubeaseAuthStore] 刷新 accessToken 失败', error)
-          this.clearAuth()
+          if (isUnauthorized(error)) {
+            this.clearAuth()
+          }
           throw error
         } finally {
           refreshPromise = null

@@ -55,11 +55,10 @@
       />
     </view>
 
-    <view class="fab" @click="openAddSheet()"></view>
-
     <SubeaseTabBar
       :active-tab="activeTab"
       @change="handleTabChange"
+      @add="openAddSheet"
     />
 
     <view v-if="silentLoginLoading && !sheetState.visible" class="auth-loading-overlay">
@@ -1328,44 +1327,6 @@ export default {
   background:
     radial-gradient(circle at top center, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0)),
     var(--app-bg);
-}
-
-.fab {
-  position: fixed;
-  right: 36rpx;
-  bottom: 200rpx;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 104rpx;
-  height: 104rpx;
-  border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, #6d83ff, var(--accent));
-  border: 1px solid rgba(255, 255, 255, 0.42);
-  box-shadow:
-    0 16rpx 32rpx rgba(87, 112, 255, 0.18),
-    0 6rpx 12rpx rgba(15, 23, 42, 0.08);
-}
-
-.fab::after {
-  content: '';
-  width: 44rpx;
-  height: 44rpx;
-  background-color: #fff;
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cline x1='12' y1='5' x2='12' y2='19' stroke='black' stroke-width='2.5' stroke-linecap='round'/%3E%3Cline x1='5' y1='12' x2='19' y2='12' stroke='black' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E");
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cline x1='12' y1='5' x2='12' y2='19' stroke='black' stroke-width='2.5' stroke-linecap='round'/%3E%3Cline x1='5' y1='12' x2='19' y2='12' stroke='black' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E");
-  -webkit-mask-size: contain;
-  mask-size: contain;
-  -webkit-mask-position: center;
-  mask-position: center;
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-}
-
-.fab:active {
-  transform: scale(0.92);
-  box-shadow: var(--shadow-card);
 }
 
 .auth-loading-overlay {

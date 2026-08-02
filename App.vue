@@ -96,11 +96,17 @@
 		--frosted-surface: rgba(255, 255, 255, 0.78);
 		--frosted-border: rgba(255, 255, 255, 0.52);
 		--page-gutter: 36rpx;
-		--content-bottom-space: 220rpx;
+		--content-bottom-space: calc(132rpx + env(safe-area-inset-bottom, 0px));
 
 		--transition-fast: #{$duration-fast} #{$ease-out};
 		--transition-normal: #{$duration-normal} #{$ease-out};
 		--transition-slow: #{$duration-slow} #{$ease-out};
+	}
+
+	@media (min-width: 768px) {
+		page {
+			--content-bottom-space: calc(132rpx + env(safe-area-inset-bottom, 0px));
+		}
 	}
 
 	button {

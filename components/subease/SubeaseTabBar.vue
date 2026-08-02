@@ -1,13 +1,21 @@
 <template>
   <view class="tab-bar">
     <view
-      v-for="item in items"
+      v-for="item in displayItems"
       :key="item.key"
-      :class="['tab-item', activeTab === item.key ? 'is-active' : '']"
-      @click="$emit('change', item.key)"
+      :class="item.type === 'add'
+        ? 'tab-add-wrapper'
+        : ['tab-item', activeTab === item.key ? 'is-active' : '']"
+      @click="handleClick(item)"
     >
-      <view :class="['tab-icon', `tab-icon-${item.key}`]"></view>
-      <text class="tab-label">{{ item.label }}</text>
+      <view v-if="item.type === 'add'" class="tab-add-button">
+        <view class="tab-add-icon"></view>
+      </view>
+
+      <template v-else>
+        <view :class="['tab-icon', `tab-icon-${item.key}`]"></view>
+        <text class="tab-label">{{ item.label }}</text>
+      </template>
     </view>
   </view>
 </template>
@@ -21,7 +29,7 @@ export default {
       default: 'home'
     }
   },
-  emits: ['change'],
+  emits: ['change', 'add'],
   data() {
     return {
       items: [
@@ -30,6 +38,27 @@ export default {
         { key: 'analytics', label: '分析' },
         { key: 'profile', label: '我的' }
       ]
+    }
+  },
+  computed: {
+    displayItems() {
+      const [home, subscriptions, analytics, profile] = this.items
+      return [
+        home,
+        subscriptions,
+        { key: 'add', type: 'add' },
+        analytics,
+        profile
+      ]
+    }
+  },
+  methods: {
+    handleClick(item) {
+      if (item.type === 'add') {
+        this.$emit('add')
+        return
+      }
+      this.$emit('change', item.key)
     }
   }
 }
@@ -41,9 +70,11 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
+  z-index: 20;
   display: flex;
   align-items: flex-start;
   justify-content: space-around;
+  overflow: visible;
   padding: 12rpx 24rpx calc(24rpx + env(safe-area-inset-bottom, 0px));
   background: var(--frosted-surface);
   border-top: 1px solid var(--separator);
@@ -54,10 +85,11 @@ export default {
 }
 
 .tab-item {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 120rpx;
+  min-width: 0;
   padding: 14rpx 18rpx 10rpx;
   color: var(--text-tertiary);
   position: relative;
@@ -66,6 +98,53 @@ export default {
     color var(--transition-fast),
     background var(--transition-fast),
     transform var(--transition-fast);
+}
+
+.tab-add-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 8rpx;
+}
+
+.tab-add-button {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 112rpx;
+  height: 112rpx;
+  margin-top: -36rpx;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #6d83ff, var(--accent));
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  box-shadow:
+    0 16rpx 32rpx rgba(87, 112, 255, 0.18),
+    0 6rpx 12rpx rgba(15, 23, 42, 0.08);
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.tab-add-button:active {
+  transform: scale(0.92);
+  box-shadow: var(--shadow-card);
+}
+
+.tab-add-icon {
+  width: 46rpx;
+  height: 46rpx;
+  background-color: #fff;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cline x1='12' y1='5' x2='12' y2='19' stroke='black' stroke-width='2.5' stroke-linecap='round'/%3E%3Cline x1='5' y1='12' x2='19' y2='12' stroke='black' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cline x1='12' y1='5' x2='12' y2='19' stroke='black' stroke-width='2.5' stroke-linecap='round'/%3E%3Cline x1='5' y1='12' x2='19' y2='12' stroke='black' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
 }
 
 .tab-item.is-active {

@@ -112,6 +112,11 @@ function isUnauthorizedResponse(response) {
   return response.statusCode === 401 || (response.data && response.data.code === 401)
 }
 
+function isUnauthorizedError(error) {
+  const response = error && error.response
+  return response ? isUnauthorizedResponse(response) : false
+}
+
 function parseResponse(response) {
   const body = response.data || {}
   if (response.statusCode >= 200 && response.statusCode < 300 && body.code === 200) {
@@ -192,11 +197,13 @@ export async function request(options = {}) {
       try {
         return await retryWithRefresh(options, executeRequest)
       } catch (refreshError) {
-        try {
-          const authStore = useSubeaseAuthStore()
-          authStore.markSessionExpired()
-        } catch {}
-        await redirectToAuthPage()
+        if (isUnauthorizedError(refreshError)) {
+          try {
+            const authStore = useSubeaseAuthStore()
+            authStore.markSessionExpired()
+          } catch {}
+          await redirectToAuthPage()
+        }
         throw refreshError
       }
     }
@@ -216,11 +223,13 @@ export async function uploadFile(options = {}) {
       try {
         return await retryWithRefresh(options, executeUpload)
       } catch (refreshError) {
-        try {
-          const authStore = useSubeaseAuthStore()
-          authStore.markSessionExpired()
-        } catch {}
-        await redirectToAuthPage()
+        if (isUnauthorizedError(refreshError)) {
+          try {
+            const authStore = useSubeaseAuthStore()
+            authStore.markSessionExpired()
+          } catch {}
+          await redirectToAuthPage()
+        }
         throw refreshError
       }
     }

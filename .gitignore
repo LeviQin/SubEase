@@ -1,0 +1,15 @@
+# 依赖与构建产物
+node_modules/
+unpackage/
+
+# HBuilderX 与本机 IDE 配置
+.hbuilderx/
+.idea/
+.vscode/
+*.swp
+
+# 日志与临时文件
+*.log
+.DS_Store
+Thumbs.db
+temp/

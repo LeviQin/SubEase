@@ -62,6 +62,8 @@
       </text>
     </view>
 
+    <view v-if="selectedIds.length" class="select-bar-spacer"></view>
+
     <view v-if="selectedIds.length" class="select-bar">
       <text class="select-text">已选 {{ selectedIds.length }} 项</text>
       <view class="select-actions">
@@ -146,7 +148,7 @@ export default {
 <style scoped lang="scss">
 .tab-scroll {
   height: 100%;
-  padding: 28rpx 36rpx 260rpx;
+  padding: 28rpx 36rpx var(--content-bottom-space);
 }
 
 .toolbar {
@@ -404,8 +406,8 @@ export default {
   position: fixed;
   left: 36rpx;
   right: 36rpx;
-  bottom: 320rpx; /* 位于 FAB(bottom:200rpx, 高104rpx, 顶部304rpx) 之上，不与其重叠 */
-  z-index: 30; /* 高于 FAB(20)，避免被右下角按钮遮挡 */
+  bottom: calc(var(--content-bottom-space) + 20px);
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -415,6 +417,10 @@ export default {
   border-radius: var(--radius-control);
   box-shadow: var(--shadow-raised);
   backdrop-filter: blur(20rpx);
+}
+
+.select-bar-spacer {
+  height: calc(20px + 140rpx);
 }
 
 .select-text {
