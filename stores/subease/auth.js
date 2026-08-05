@@ -111,14 +111,14 @@ export const useSubeaseAuthStore = defineStore('subeaseAuth', {
   getters: {
     isLoggedIn: (state) => Boolean(state.accessToken),
     nickname: (state) => {
-      return (state.userInfo && state.userInfo.nickname) || '期账本用户'
+      return (state.userInfo && state.userInfo.nickname) || '归期本用户'
     },
     avatarUrl: (state) => {
       return (state.userInfo && state.userInfo.avatar_url) || ''
     },
     avatarText: (state) => {
       const nick = (state.userInfo && state.userInfo.nickname) || ''
-      if (!nick || nick === '期账本用户') return 'USER'
+      if (!nick || nick === '归期本用户') return 'USER'
       return nick.slice(0, 2).toUpperCase()
     },
     userIdText: (state) => {

@@ -449,12 +449,12 @@ export default {
     },
     pageTitle() {
       const titleMap = {
-        home: '期账本',
+        home: '归期本',
         subscriptions: '全部订阅',
         analytics: '支出分析',
         profile: '我的'
       }
-      return titleMap[this.activeTab] || '期账本'
+      return titleMap[this.activeTab] || '归期本'
     },
     summaryStats() {
       return getSummaryStats(this.subscriptions, this.rates)

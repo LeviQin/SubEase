@@ -11,7 +11,7 @@
 		{
 			"path": "pages/legal/index",
 			"style": {
-				"navigationBarTitleText": "关于期账本"
+				"navigationBarTitleText": "关于归期本"
 			}
 		},
 		{
@@ -29,7 +29,7 @@
 	],
 	"globalStyle": {
 		"navigationBarTextStyle": "black",
-		"navigationBarTitleText": "期账本",
+		"navigationBarTitleText": "归期本",
 		"navigationBarBackgroundColor": "#F2F2F7",
 		"backgroundColor": "#F2F2F7"
 	},

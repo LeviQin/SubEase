@@ -18,7 +18,7 @@
       </view>
     </view>
 
-    <text class="copyright">Copyright © {{ year }} 期账本</text>
+    <text class="copyright">Copyright © {{ year }} 归期本</text>
   </view>
 </template>
 
@@ -62,9 +62,8 @@ export default {
 }
 
 .about-logo {
-  width: 128rpx;
-  height: 128rpx;
-  margin-bottom: 24rpx;
+  width: 145rpx;
+  height: 145rpx;
   border-radius: 28rpx;
 }
 

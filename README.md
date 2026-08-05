@@ -1,4 +1,4 @@
-# 期账本（Qizhangben）
+# 归期本（Qizhangben）
 
 一款基于微信小程序的**订阅管理与到期提醒**工具。记录会员/订阅服务的价格、周期与到期日，支持多币种折算、支出分析与到期推送提醒。
 
@@ -49,7 +49,7 @@ SubEase/
 
 ### 1. 运行后端
 
-期账本依赖 [levi-blog-service](../../levi-blog-service)（多项目共用后端服务）。
+归期本依赖 [levi-blog-service](../../levi-blog-service)（多项目共用后端服务）。
 
 ```bash
 cd levi-blog-service
