@@ -1,5 +1,10 @@
+function pad(num) {
+  return `${num}`.padStart(2, '0')
+}
+
 function todayString() {
-  return new Date().toISOString().slice(0, 10)
+  const today = new Date()
+  return `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`
 }
 
 export function createEmptyFormState() {

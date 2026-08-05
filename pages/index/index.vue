@@ -865,9 +865,9 @@ export default {
       }
     },
     _calcNextDate(cycle) {
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      const target = new Date(today)
+      // 以表单当前日期为基准，避免切换周期时覆盖用户已选日期
+      const base = new Date(`${this.formState.nextDate}T00:00:00`)
+      const target = new Date(base)
       if (cycle === '月付') {
         target.setMonth(target.getMonth() + 1)
       } else if (cycle === '季度付') {
@@ -876,10 +876,11 @@ export default {
         target.setFullYear(target.getFullYear() + 1)
       }
       // 处理月末溢出：如 1月31日 +1月 → 应为 2月28/29日，而非 3月3日
-      if (target.getDate() !== today.getDate()) {
+      if (target.getDate() !== base.getDate()) {
         target.setDate(0)
       }
-      return target.toISOString().slice(0, 10)
+      const pad = (n) => String(n).padStart(2, '0')
+      return `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}`
     },
     onCurrencyChange(event) {
       const index = Number(event.detail.value)
