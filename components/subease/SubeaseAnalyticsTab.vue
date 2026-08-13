@@ -45,7 +45,7 @@
       <view class="section-label">近 6 个月支出趋势</view>
       <view class="trend-card" v-if="monthlyTrend.length">
         <view class="trend-bars">
-          <view v-for="item in monthlyTrend" :key="item.key" class="trend-bar-wrap">
+          <view v-for="item in monthlyTrend" :key="item.key" class="trend-bar-wrap" @click="showTrendDetail(item)">
             <text class="trend-value">{{ item.amount > 0 ? formatCurrency(item.amount, 'CNY', amountsHidden) : '' }}</text>
             <view class="trend-bar-track">
               <view
@@ -57,7 +57,7 @@
             <text class="trend-label">{{ item.shortLabel }}</text>
           </view>
         </view>
-        <text class="trend-note">按订阅周期估算（含本月未到期扣款）</text>
+        <text class="trend-note">按订阅周期估算（含本月未到期扣款），点击柱子查看详情</text>
       </view>
 
       <view class="section-label">分类支出分布</view>
@@ -140,6 +140,15 @@ export default {
       if (!amount || !max) return '6%'
       const ratio = Math.max(Number(amount) / max, 0.08)
       return `${Math.round(ratio * 100)}%`
+    },
+    showTrendDetail(item) {
+      // 小程序无 hover，点击柱子弹出当月精确金额
+      uni.showModal({
+        title: item.label,
+        content: `支出 ${formatCurrency(item.amount, 'CNY', this.amountsHidden)}`,
+        showCancel: false,
+        confirmText: '知道了'
+      })
     }
   }
 }
@@ -196,6 +205,8 @@ export default {
   font-weight: 700;
   letter-spacing: -1rpx;
   color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
 .metric-label {
@@ -221,6 +232,8 @@ export default {
   font-weight: 700;
   letter-spacing: -1rpx;
   color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
 .next-month-desc {
@@ -244,6 +257,8 @@ export default {
   font-weight: 700;
   letter-spacing: -1rpx;
   color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
 .week-desc {

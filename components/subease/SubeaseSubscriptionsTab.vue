@@ -51,6 +51,7 @@
             :class="['select-indicator', selectedIds.includes(item.id) ? 'is-selected' : '']"
             @click.stop="$emit('toggle-select', item.id)"
           ></view>
+          <view class="sub-avatar" :style="{ background: getCategoryColor(item.category) }">{{ getAvatarText(item.name) }}</view>
           <view class="row-main">
             <text class="row-title">{{ item.name }}</text>
             <view class="row-sub-line">
@@ -91,7 +92,7 @@
 </template>
 
 <script>
-import { formatCurrency, formatShortDate } from '@/utils/subease/helpers'
+import { formatCurrency, formatShortDate, getAvatarText, getCategoryColor } from '@/utils/subease/helpers'
 
 export default {
   name: 'SubeaseSubscriptionsTab',
@@ -150,6 +151,8 @@ export default {
   methods: {
     formatCurrency,
     formatShortDate,
+    getAvatarText,
+    getCategoryColor,
     handleInput(event) {
       this.$emit('update-search', event.detail.value)
     },
@@ -363,6 +366,20 @@ export default {
   mask-position: center;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
+}
+
+.sub-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 80rpx;
+  height: 80rpx;
+  margin-right: 20rpx;
+  border-radius: 22rpx;
+  color: #ffffff;
+  font-size: 34rpx;
+  font-weight: 700;
 }
 
 .row-main {

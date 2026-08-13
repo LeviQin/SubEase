@@ -3,12 +3,12 @@
     <view class="section-label">总览</view>
     <view class="hero-card">
       <view class="hero-side">
-        <text class="hero-amount">{{ formatCurrency(summary.nextMonthTotal, 'CNY', amountsHidden) }}</text>
+        <text class="hero-amount">{{ formatCurrency(nextMonthDisplay, 'CNY', amountsHidden) }}</text>
         <text class="hero-desc">下月待付</text>
       </view>
       <view class="hero-divider"></view>
       <view class="hero-side">
-        <text class="hero-amount">{{ formatCurrency(summary.monthlyTotal, 'CNY', amountsHidden) }}</text>
+        <text class="hero-amount">{{ formatCurrency(monthlyDisplay, 'CNY', amountsHidden) }}</text>
         <text class="hero-desc">本月支出</text>
       </view>
       <view class="hero-glow"></view>
@@ -42,12 +42,12 @@
         class="upcoming-item"
         @click="$emit('open-detail', item.id)"
       >
-        <view :class="['dot', item.days <= 3 ? 'dot-warning' : 'dot-normal']"></view>
+        <view class="sub-avatar" :style="{ background: getCategoryColor(item.category) }">{{ getAvatarText(item.name) }}</view>
         <view class="item-main">
           <text class="item-name">{{ item.name }}</text>
           <text class="item-meta">{{ formatCurrency(item.price, item.currency) }} · {{ item.cycle }}</text>
         </view>
-        <text :class="['item-countdown', item.days <= 3 ? 'is-warning' : '']">
+        <text :class="['item-countdown', countdownClass(item.days)]">
           {{ item.days === 0 ? '今天到期' : `剩余 ${item.days} 天` }}
         </text>
       </view>
@@ -63,7 +63,23 @@
 </template>
 
 <script>
-import { formatCurrency } from '@/utils/subease/helpers'
+import { formatCurrency, getAvatarText, getCategoryColor } from '@/utils/subease/helpers'
+
+// rAF 兼容：小程序部分渲染模式/基础库无全局 requestAnimationFrame，降级 setTimeout 16ms
+function raf(callback) {
+  if (typeof requestAnimationFrame === 'function') {
+    return requestAnimationFrame(callback)
+  }
+  return setTimeout(() => callback(Date.now()), 16)
+}
+
+function caf(id) {
+  if (typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(id)
+    return
+  }
+  clearTimeout(id)
+}
 
 export default {
   name: 'SubeaseHomeTab',
@@ -86,6 +102,12 @@ export default {
     }
   },
   emits: ['open-add', 'toggle-amount', 'open-detail', 'open-detail-suggestions'],
+  data() {
+    return {
+      nextMonthDisplay: 0,
+      monthlyDisplay: 0
+    }
+  },
   computed: {
     healthScoreLabel() {
       const score = this.health.score
@@ -94,8 +116,66 @@ export default {
       return '需要关注'
     }
   },
+  watch: {
+    'summary.nextMonthTotal': {
+      immediate: true,
+      handler(value) {
+        this.animateNumber('nextMonthDisplay', value)
+      }
+    },
+    'summary.monthlyTotal': {
+      immediate: true,
+      handler(value) {
+        this.animateNumber('monthlyDisplay', value)
+      }
+    },
+    amountsHidden() {
+      // 隐藏/显示切换时直接同步目标值，不做动画
+      this.nextMonthDisplay = this.summary.nextMonthTotal
+      this.monthlyDisplay = this.summary.monthlyTotal
+    }
+  },
+  beforeUnmount() {
+    if (this._rafs) {
+      Object.keys(this._rafs).forEach((key) => caf(this._rafs[key]))
+      this._rafs = null
+    }
+  },
   methods: {
-    formatCurrency
+    formatCurrency,
+    getAvatarText,
+    getCategoryColor,
+    countdownClass(days) {
+      if (days === 0) return 'is-today'
+      if (days <= 3) return 'is-urgent'
+      if (days <= 7) return 'is-warning'
+      return ''
+    },
+    animateNumber(key, target) {
+      const end = Number(target) || 0
+      if (this.amountsHidden) {
+        this[key] = end
+        return
+      }
+      const start = Number(this[key]) || 0
+      if (start === end) {
+        this[key] = end
+        return
+      }
+      this._rafs = this._rafs || {}
+      if (this._rafs[key]) caf(this._rafs[key])
+      const duration = 400
+      const startTime = Date.now()
+      const step = () => {
+        const progress = Math.min((Date.now() - startTime) / duration, 1)
+        const eased = 1 - Math.pow(1 - progress, 3)
+        this[key] = Math.round(start + (end - start) * eased)
+        if (progress < 1) {
+          this._rafs[key] = raf(step)
+        }
+      }
+      this._rafs[key] = raf(step)
+    }
   }
 }
 </script>
@@ -141,6 +221,9 @@ export default {
   font-weight: 700;
   letter-spacing: -1.2rpx;
   color: var(--text-primary);
+  /* 等宽数字：金额刷新时字符宽度一致，避免布局微晃 */
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
 .hero-desc {
@@ -184,7 +267,8 @@ export default {
   font-size: 26rpx;
   font-weight: 600;
   color: var(--accent);
-  padding: 8rpx 0 8rpx 24rpx;
+  /* 扩大触控目标（iOS HIG 最小 44pt 高约 88rpx） */
+  padding: 16rpx 24rpx;
 }
 
 .health-card {
@@ -279,10 +363,6 @@ export default {
   border-bottom: 1px solid var(--separator);
 }
 
-.upcoming-item .dot {
-  margin-right: 22rpx;
-}
-
 .upcoming-item .item-main {
   margin-right: 22rpx;
 }
@@ -291,20 +371,18 @@ export default {
   border-bottom: 0;
 }
 
-.dot {
-  width: 16rpx;
-  height: 16rpx;
-  border-radius: 50%;
+.sub-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-}
-
-.dot-warning {
-  background: var(--warning);
-  box-shadow: 0 0 0 6rpx rgba(255, 159, 10, 0.14);
-}
-
-.dot-normal {
-  background: var(--text-quaternary);
+  width: 80rpx;
+  height: 80rpx;
+  margin-right: 22rpx;
+  border-radius: 22rpx;
+  color: #ffffff;
+  font-size: 34rpx;
+  font-weight: 700;
 }
 
 .item-main {
@@ -333,6 +411,23 @@ export default {
 
 .item-countdown.is-warning {
   color: var(--warning);
+}
+
+.item-countdown.is-urgent {
+  color: var(--danger);
+}
+
+.item-countdown.is-today {
+  padding: 6rpx 16rpx;
+  border-radius: var(--radius-pill);
+  background: var(--danger);
+  color: var(--text-inverse);
+  animation: countdown-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes countdown-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.72; }
 }
 
 .empty-state {

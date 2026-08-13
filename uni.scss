@@ -38,7 +38,8 @@ $bg-overlay: rgba(10, 10, 18, 0.24);
 
 $text-primary: $neutral-900;
 $text-secondary: $neutral-600;
-$text-tertiary: $neutral-500;
+// 三级色加深至 #71717a：白底对比约 4.8:1，满足 WCAG AA 小字标准（原 #8e8e93 约 3.4:1）
+$text-tertiary: #71717a;
 $text-quaternary: $neutral-400;
 $text-inverse: $neutral-0;
 

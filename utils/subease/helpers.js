@@ -527,6 +527,33 @@ export function cloneSubscription(item) {
   return JSON.parse(JSON.stringify(item))
 }
 
+// ═══ 订阅图标：首字色块（分类配色，未知分类按名称哈希稳定取色）═══
+
+const CATEGORY_COLOR_MAP = {
+  视频: '#7F77DD',
+  音乐: '#1D9E75',
+  工具: '#5770FF',
+  其他: '#8A8F98'
+}
+const CATEGORY_PALETTE = ['#7F77DD', '#1D9E75', '#5770FF', '#D9930D', '#C4553A', '#2F6FED']
+
+export function getCategoryColor(category) {
+  const name = String(category || '其他').trim()
+  if (CATEGORY_COLOR_MAP[name]) return CATEGORY_COLOR_MAP[name]
+  let hash = 0
+  for (let i = 0; i < name.length; i += 1) {
+    hash = (hash * 31 + name.charCodeAt(i)) >>> 0
+  }
+  return CATEGORY_PALETTE[hash % CATEGORY_PALETTE.length]
+}
+
+export function getAvatarText(name) {
+  const text = String(name || '').trim()
+  if (!text) return '?'
+  const first = text[0]
+  return /[a-zA-Z]/.test(first) ? first.toUpperCase() : first
+}
+
 // ═══ 批量导入：CSV 文本解析（纯函数）═══
 // 支持两种格式：
 // 1) 导出格式（含表头，9 列）：名称,金额,货币,分类,周期,下次付款日,支付方式,自动续费,备注
