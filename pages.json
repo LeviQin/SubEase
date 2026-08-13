@@ -25,6 +25,12 @@
 			"style": {
 				"navigationBarTitleText": "隐私政策"
 			}
+		},
+		{
+			"path": "pages/report/annual",
+			"style": {
+				"navigationBarTitleText": "年度账单报告"
+			}
 		}
 	],
 	"globalStyle": {

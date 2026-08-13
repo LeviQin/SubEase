@@ -1,5 +1,5 @@
 <template>
-  <view v-if="visible" class="toast">{{ message }}</view>
+  <view v-if="visible" class="toast" :style="toastStyle">{{ message }}</view>
 </template>
 
 <script>
@@ -13,6 +13,16 @@ export default {
     message: {
       type: String,
       default: ''
+    },
+    // 距离视口顶部的偏移（px），由父页面按自定义导航栏高度传入，避免被遮挡
+    top: {
+      type: String,
+      default: '120rpx'
+    }
+  },
+  computed: {
+    toastStyle() {
+      return { top: this.top }
     }
   }
 }
@@ -21,7 +31,6 @@ export default {
 <style scoped lang="scss">
 .toast {
   position: fixed;
-  top: 120rpx;
   left: 50%;
   z-index: 60;
   max-width: calc(100vw - 96rpx);

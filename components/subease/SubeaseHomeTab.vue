@@ -3,21 +3,35 @@
     <view class="section-label">总览</view>
     <view class="hero-card">
       <view class="hero-side">
-        <text class="hero-amount">{{ formatCurrency(summary.monthlyTotal, 'CNY', amountsHidden) }}</text>
-        <text class="hero-desc">本月支出</text>
+        <text class="hero-amount">{{ formatCurrency(summary.nextMonthTotal, 'CNY', amountsHidden) }}</text>
+        <text class="hero-desc">下月待付</text>
       </view>
       <view class="hero-divider"></view>
       <view class="hero-side">
-        <text class="hero-amount">{{ formatCurrency(summary.yearlyTotal, 'CNY', amountsHidden) }}</text>
-        <text class="hero-desc">年度支出</text>
+        <text class="hero-amount">{{ formatCurrency(summary.monthlyTotal, 'CNY', amountsHidden) }}</text>
+        <text class="hero-desc">本月支出</text>
       </view>
       <view class="hero-glow"></view>
     </view>
 
-    <view class="hero-toggle">
+    <view class="hero-footer">
+      <text class="hero-footer-text">年度支出 {{ formatCurrency(summary.yearlyTotal, 'CNY', amountsHidden) }}</text>
       <text class="hero-toggle-text" @click="$emit('toggle-amount')">
         {{ amountsHidden ? '显示金额' : '隐藏金额' }}
       </text>
+    </view>
+
+    <view v-if="health.score > 0" class="health-card" @click="$emit('open-detail-suggestions')">
+      <view class="health-score">
+        <text class="health-score-num">{{ health.score }}</text>
+        <text class="health-score-label">健康分</text>
+      </view>
+      <view class="health-body">
+        <text class="health-title">{{ healthScoreLabel }}</text>
+        <text v-if="health.suggestions.length" class="health-suggestion">{{ health.suggestions[0].text }}</text>
+        <text v-else class="health-suggestion">订阅状态良好，继续保持。</text>
+      </view>
+      <view class="health-arrow"></view>
     </view>
 
     <view class="section-label">近期待付</view>
@@ -56,7 +70,7 @@ export default {
   props: {
     summary: {
       type: Object,
-      default: () => ({ monthlyTotal: 0, yearlyTotal: 0 })
+      default: () => ({ monthlyTotal: 0, yearlyTotal: 0, nextMonthTotal: 0 })
     },
     upcomingList: {
       type: Array,
@@ -65,9 +79,21 @@ export default {
     amountsHidden: {
       type: Boolean,
       default: false
+    },
+    health: {
+      type: Object,
+      default: () => ({ score: 0, suggestions: [] })
     }
   },
-  emits: ['open-add', 'toggle-amount', 'open-detail'],
+  emits: ['open-add', 'toggle-amount', 'open-detail', 'open-detail-suggestions'],
+  computed: {
+    healthScoreLabel() {
+      const score = this.health.score
+      if (score >= 80) return '订阅状态良好'
+      if (score >= 60) return '订阅状态一般'
+      return '需要关注'
+    }
+  },
   methods: {
     formatCurrency
   }
@@ -95,7 +121,7 @@ export default {
   overflow: hidden;
   margin-bottom: 22rpx;
   padding: 44rpx 32rpx;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 250, 252, 0.98));
+  background: var(--bg-elevated);
   border: 1px solid var(--separator);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-card);
@@ -142,17 +168,99 @@ export default {
   background: radial-gradient(circle, rgba(87, 112, 255, 0.14), rgba(87, 112, 255, 0));
 }
 
-.hero-toggle {
+.hero-footer {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   margin: -2rpx 0 32rpx;
 }
 
-.hero-toggle-text {
+.hero-footer-text {
   font-size: 23rpx;
+  color: var(--text-secondary);
+}
+
+.hero-toggle-text {
+  font-size: 26rpx;
   font-weight: 600;
   color: var(--accent);
-  padding: 8rpx 0;
+  padding: 8rpx 0 8rpx 24rpx;
+}
+
+.health-card {
+  display: flex;
+  align-items: center;
+  margin-bottom: 32rpx;
+  padding: 26rpx 28rpx;
+  background: var(--bg-elevated);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.health-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 108rpx;
+  height: 108rpx;
+  margin-right: 24rpx;
+  border-radius: 50%;
+  background: var(--bg-accent);
+}
+
+.health-score-num {
+  font-size: 40rpx;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.health-score-label {
+  margin-top: 6rpx;
+  font-size: 20rpx;
+  color: var(--text-tertiary);
+}
+
+.health-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.health-title {
+  display: block;
+  margin-bottom: 8rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.health-suggestion {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: 23rpx;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.health-arrow {
+  flex-shrink: 0;
+  width: 28rpx;
+  height: 28rpx;
+  margin-left: 16rpx;
+  background-color: var(--text-quaternary);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpolyline points='6 4 10 8 6 12' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpolyline points='6 4 10 8 6 12' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
 }
 
 .upcoming-card {

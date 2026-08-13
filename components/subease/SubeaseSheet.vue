@@ -162,7 +162,7 @@ export default {
   display: flex;
   padding: 24rpx 32rpx calc(28rpx + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--separator);
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--frosted-surface);
 }
 
 .sheet-btn {

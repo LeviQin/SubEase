@@ -40,7 +40,7 @@ export function batchDeleteSubscriptions(ids) {
 
 export function requestExport() {
   return request({
-    url: '/subscription/export',
+    url: '/subscription/export-xlsx',
     method: 'GET'
   })
 }

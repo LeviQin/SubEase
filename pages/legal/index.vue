@@ -5,6 +5,9 @@
       <text class="about-name">{{ about.appName }}</text>
       <text class="about-version">{{ about.version }}</text>
       <text class="about-desc">{{ about.description }}</text>
+      <text class="about-meta">{{ about.contact }}</text>
+      <text class="about-meta">运营主体：{{ about.entity }}</text>
+      <text class="about-meta">{{ about.icp }}</text>
     </view>
 
     <view class="link-card">
@@ -83,6 +86,12 @@ export default {
   margin-top: 16rpx;
   font-size: 26rpx;
   color: var(--text-secondary);
+}
+
+.about-meta {
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  color: var(--text-tertiary);
 }
 
 .link-card {

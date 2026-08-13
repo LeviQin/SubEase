@@ -1,8 +1,9 @@
 // 用户服务协议 / 隐私政策 静态内容
 // 注意：上线前请将【运营主体名称】【联系方式】等占位信息替换为真实主体信息
 
-const PLACEHOLDER_ENTITY = '运营主体名称（备案后替换）'
-const PLACEHOLDER_CONTACT = '客服邮箱：contact@example.com（备案后替换）'
+const PLACEHOLDER_ENTITY = '钦彪'
+const PLACEHOLDER_CONTACT = '客服邮箱：qinbiao_web@163.com'
+const PLACEHOLDER_ICP = '粤ICP备2022120914号-2X'
 
 export const AGREEMENT_SECTIONS = [
   {
@@ -85,6 +86,9 @@ export const PRIVACY_SECTIONS = [
 
 export const ABOUT_INFO = {
   appName: '归期本',
-  version: 'v1.0.0',
-  description: '订阅管理 · 到期提醒'
+  version: 'v1.1.0',
+  description: '订阅管理 · 到期提醒',
+  entity: PLACEHOLDER_ENTITY,
+  contact: PLACEHOLDER_CONTACT,
+  icp: PLACEHOLDER_ICP
 }

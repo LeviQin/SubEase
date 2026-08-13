@@ -36,6 +36,30 @@
         <text class="next-month-desc">月付订阅必计，季度付/年付按到期日计入</text>
       </view>
 
+      <view class="section-label">本周支出</view>
+      <view class="week-card">
+        <text class="week-value">{{ formatCurrency(weekExpense.total, 'CNY', amountsHidden) }}</text>
+        <text class="week-desc">{{ weekExpense.count ? `本周共 ${weekExpense.count} 笔扣款` : '本周暂无扣款计划' }}</text>
+      </view>
+
+      <view class="section-label">近 6 个月支出趋势</view>
+      <view class="trend-card" v-if="monthlyTrend.length">
+        <view class="trend-bars">
+          <view v-for="item in monthlyTrend" :key="item.key" class="trend-bar-wrap">
+            <text class="trend-value">{{ item.amount > 0 ? formatCurrency(item.amount, 'CNY', amountsHidden) : '' }}</text>
+            <view class="trend-bar-track">
+              <view
+                class="trend-bar-fill"
+                :class="{ 'is-zero': item.amount === 0 }"
+                :style="{ height: trendBarHeight(item.amount) }"
+              ></view>
+            </view>
+            <text class="trend-label">{{ item.shortLabel }}</text>
+          </view>
+        </view>
+        <text class="trend-note">按订阅周期估算（含本月未到期扣款）</text>
+      </view>
+
       <view class="section-label">分类支出分布</view>
       <view class="chart-card" v-if="analytics.categoryStats.length">
         <view v-for="item in analytics.categoryStats" :key="item.category" class="stat-row">
@@ -99,10 +123,24 @@ export default {
     amountsHidden: {
       type: Boolean,
       default: false
+    },
+    monthlyTrend: {
+      type: Array,
+      default: () => []
+    },
+    weekExpense: {
+      type: Object,
+      default: () => ({ total: 0, count: 0 })
     }
   },
   methods: {
-    formatCurrency
+    formatCurrency,
+    trendBarHeight(amount) {
+      const max = Math.max(...this.monthlyTrend.map((item) => Number(item.amount) || 0), 0)
+      if (!amount || !max) return '6%'
+      const ratio = Math.max(Number(amount) / max, 0.08)
+      return `${Math.round(ratio * 100)}%`
+    }
   }
 }
 </script>
@@ -190,9 +228,102 @@ export default {
   color: var(--text-secondary);
 }
 
+.week-card {
+  margin-bottom: 28rpx;
+  padding: 30rpx 30rpx;
+  background: linear-gradient(135deg, rgba(52, 199, 89, 0.1), rgba(52, 199, 89, 0.03));
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.week-value {
+  display: block;
+  margin-bottom: 8rpx;
+  font-size: 46rpx;
+  font-weight: 700;
+  letter-spacing: -1rpx;
+  color: var(--text-primary);
+}
+
+.week-desc {
+  font-size: 22rpx;
+  color: var(--text-secondary);
+}
+
 .chart-card {
   margin-bottom: 28rpx;
   padding: 28rpx 26rpx;
+}
+
+.trend-card {
+  margin-bottom: 28rpx;
+  padding: 32rpx 26rpx 24rpx;
+  background: var(--bg-elevated);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.trend-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  height: 260rpx;
+}
+
+.trend-bar-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  min-width: 0;
+}
+
+.trend-value {
+  height: 34rpx;
+  font-size: 20rpx;
+  font-weight: 500;
+  color: var(--text-secondary);
+  line-height: 34rpx;
+  white-space: nowrap;
+}
+
+.trend-bar-track {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 36rpx;
+  height: 200rpx;
+  margin-top: 6rpx;
+  border-radius: 999rpx;
+  background: var(--bg-muted);
+  overflow: hidden;
+}
+
+.trend-bar-fill {
+  width: 100%;
+  border-radius: 999rpx;
+  background: linear-gradient(180deg, rgba(87, 112, 255, 0.95), rgba(87, 112, 255, 0.5));
+  transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.trend-bar-fill.is-zero {
+  background: var(--bg-muted);
+}
+
+.trend-label {
+  margin-top: 10rpx;
+  font-size: 20rpx;
+  color: var(--text-tertiary);
+}
+
+.trend-note {
+  display: block;
+  margin-top: 16rpx;
+  font-size: 21rpx;
+  color: var(--text-quaternary);
 }
 
 .stat-row {

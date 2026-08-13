@@ -61,6 +61,14 @@
         <text class="settings-left">导出数据</text>
         <view class="settings-arrow"></view>
       </view>
+      <view v-if="loggedIn" class="settings-row" @click="$emit('action', '年度账单报告')">
+        <text class="settings-left">年度账单报告</text>
+        <view class="settings-arrow"></view>
+      </view>
+      <view v-if="loggedIn" class="settings-row" @click="$emit('action', '批量导入')">
+        <text class="settings-left">批量导入</text>
+        <view class="settings-arrow"></view>
+      </view>
       <view class="settings-row" @click="$emit('action', '反馈')">
         <text class="settings-left">意见反馈</text>
         <view class="settings-arrow"></view>
@@ -139,7 +147,7 @@ export default {
   width: 120rpx;
   height: 120rpx;
   border-radius: 50%;
-  background: linear-gradient(135deg, #f5f7ff, rgba(87, 112, 255, 0.16));
+  background: var(--bg-accent);
   overflow: hidden;
 }
 

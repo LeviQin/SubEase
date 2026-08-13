@@ -11,3 +11,7 @@ export const SUBSCRIBE_TEMPLATE_ID = '2XJaY3EyaeAkKnBOdbL_7T0D-rF28xhMkH21IhT0vw
 
 // 订阅消息模板字段约定（需与公众平台模板字段一致）
 export const SUBSCRIBE_FIELDS = ['thing4', 'time2', 'number3']
+
+// 每周支出回顾推送模板 ID：需在微信公众平台申请"周报/服务提醒"类模板后填入。
+// 留空时前端入口提示"即将上线"；后端定时任务依赖此模板推送。
+export const WEEKLY_REVIEW_TEMPLATE_ID = ''

@@ -78,6 +78,47 @@ $duration-normal: 0.25s;
 $duration-slow: 0.35s;
 
 /* ═══════════════════════════════════════════
+   Dark Mode Tokens（iOS 深色语义）
+   通过 App.vue 的 @media (prefers-color-scheme: dark)
+   覆盖同名 CSS 变量，跟随系统外观切换。
+   ═══════════════════════════════════════════ */
+$dark-color-accent: #6d83ff;
+$dark-color-accent-dark: #8295ff;
+$dark-color-accent-soft: rgba(87, 112, 255, 0.16);
+$dark-color-success: #30d158;
+$dark-color-warning: #ff9f0a;
+$dark-color-danger: #ff453a;
+
+$dark-bg-root: #000000;
+$dark-bg-grouped: #1c1c1e;
+$dark-bg-elevated: #2c2c2e;
+$dark-bg-subtle: #1c1c1e;
+$dark-bg-muted: rgba(120, 120, 128, 0.24);
+$dark-bg-overlay: rgba(0, 0, 0, 0.6);
+$dark-bg-accent: rgba(87, 112, 255, 0.16);
+
+$dark-text-primary: #f2f2f7;
+$dark-text-secondary: #d1d1d6;
+$dark-text-tertiary: #8e8e93;
+$dark-text-quaternary: #636366;
+$dark-text-inverse: #ffffff;
+
+$dark-border-light: rgba(84, 84, 88, 0.5);
+$dark-border-medium: rgba(84, 84, 88, 0.62);
+$dark-border-strong: rgba(84, 84, 88, 0.74);
+
+$dark-shadow-xs: 0 2rpx 8rpx rgba(0, 0, 0, 0.4);
+$dark-shadow-sm: 0 8rpx 28rpx rgba(0, 0, 0, 0.5);
+$dark-shadow-md: 0 12rpx 36rpx rgba(0, 0, 0, 0.55);
+$dark-shadow-lg: 0 20rpx 56rpx rgba(0, 0, 0, 0.6);
+$dark-shadow-xl: 0 28rpx 72rpx rgba(0, 0, 0, 0.66);
+
+$dark-frosted-surface: rgba(44, 44, 46, 0.78);
+$dark-frosted-border: rgba(84, 84, 88, 0.52);
+$dark-nav-fade: rgba(0, 0, 0, 0.36);
+$dark-page-glow: rgba(255, 255, 255, 0.04);
+
+/* ═══════════════════════════════════════════
    CSS Custom Properties 说明（重要）
 
    微信小程序 wxss 不支持 :root 选择器，且 uni.scss 会被注入到每个

@@ -63,7 +63,7 @@ function clearManualLogoutState() {
   }
 }
 
-function getWeixinLoginCode() {
+export function getWeixinLoginCode() {
   return new Promise((resolve, reject) => {
     // #ifdef MP-WEIXIN
     wx.login({

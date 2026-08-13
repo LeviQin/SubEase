@@ -120,7 +120,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #f5f7ff, #e9eefb);
+  background: var(--bg-accent);
 }
 
 .avatar-placeholder-text {

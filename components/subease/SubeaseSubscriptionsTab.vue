@@ -21,7 +21,18 @@
       </view>
     </view>
 
-    <view v-if="subscriptions.length" class="list-card">
+    <view v-if="loading" class="skeleton-list">
+      <view v-for="i in 5" :key="i" class="skeleton-row">
+        <view class="skeleton-dot"></view>
+        <view class="skeleton-lines">
+          <view class="skeleton-line skeleton-line-title"></view>
+          <view class="skeleton-line skeleton-line-sub"></view>
+        </view>
+        <view class="skeleton-line skeleton-line-price"></view>
+      </view>
+    </view>
+
+    <view v-else-if="subscriptions.length" class="list-card">
       <view
         v-for="item in subscriptions"
         :key="item.id"
@@ -34,28 +45,32 @@
           <view class="swipe-btn swipe-delete" @click.stop="$emit('delete', item.id)">删除</view>
         </view>
 
-        <view class="list-row" @click="$emit('open-detail', item.id)" @longpress="$emit('toggle-select', item.id)">
+        <view class="list-row" @click="onRowClick(item.id)" @longpress="$emit('toggle-select', item.id)">
           <view
+            v-if="selectedIds.length"
             :class="['select-indicator', selectedIds.includes(item.id) ? 'is-selected' : '']"
             @click.stop="$emit('toggle-select', item.id)"
           ></view>
           <view class="row-main">
             <text class="row-title">{{ item.name }}</text>
-            <text class="row-sub">{{ item.category }} · {{ item.cycle }} · {{ formatShortDate(item.nextDate) }}</text>
+            <view class="row-sub-line">
+              <text class="row-sub">{{ item.category }} · {{ item.cycle }} · {{ formatShortDate(item.displayDate || item.nextDate) }}</text>
+              <text v-if="item.status === 'expired'" class="status-chip status-chip-expired">已过期</text>
+              <text v-else-if="item.status === 'rolled'" class="status-chip status-chip-rolled">已续期</text>
+            </view>
           </view>
           <view class="row-trailing">
             <text class="row-price">{{ formatCurrency(item.price, item.currency) }}</text>
             <text v-if="item.autoRenew" class="row-badge">自动</text>
-            <view v-else class="row-actions-inline">
-              <text class="row-link" @click.stop="$emit('edit', item.id)">编辑</text>
-              <text class="row-link row-link-danger" @click.stop="$emit('delete', item.id)">删除</text>
-            </view>
           </view>
         </view>
       </view>
     </view>
 
     <view v-else class="empty-state">
+      <view class="empty-illustration">
+        <view class="empty-circle"></view>
+      </view>
       <text class="empty-title">{{ searchKeyword || filterCategory ? '没有匹配结果' : '还没有订阅' }}</text>
       <text class="empty-desc">
         {{ searchKeyword || filterCategory ? '尝试清空搜索或筛选条件。' : '点击右下角开始记录你的订阅。' }}
@@ -67,6 +82,7 @@
     <view v-if="selectedIds.length" class="select-bar">
       <text class="select-text">已选 {{ selectedIds.length }} 项</text>
       <view class="select-actions">
+        <view class="select-secondary" @click="$emit('select-all')">全选</view>
         <view class="select-secondary" @click="$emit('clear-selection')">清空</view>
         <view class="select-danger" @click="$emit('batch-delete')">删除</view>
       </view>
@@ -99,6 +115,10 @@ export default {
     selectedIds: {
       type: Array,
       default: () => []
+    },
+    loading: {
+      type: Boolean,
+      default: false
     }
   },
   emits: [
@@ -110,6 +130,7 @@ export default {
     'delete',
     'toggle-select',
     'batch-delete',
+    'select-all',
     'clear-selection'
   ],
   data() {
@@ -118,11 +139,28 @@ export default {
       swipedId: null
     }
   },
+  watch: {
+    // 进入多选模式时收起已展开的左滑操作，避免手势冲突
+    selectedIds(val, oldVal) {
+      if (val.length && !oldVal.length) {
+        this.swipedId = null
+      }
+    }
+  },
   methods: {
     formatCurrency,
     formatShortDate,
     handleInput(event) {
       this.$emit('update-search', event.detail.value)
+    },
+    onRowClick(id) {
+      // 多选模式下点击行体 = 切换选中，而非打开详情
+      if (this.selectedIds.length > 0) {
+        this.$emit('toggle-select', id)
+        this.swipedId = null
+        return
+      }
+      this.$emit('open-detail', id)
     },
     onTouchStart(event, id) {
       this.touchStartX = event.changedTouches?.[0]?.clientX || 0
@@ -247,8 +285,19 @@ export default {
   bottom: 0;
   display: flex;
   width: 220rpx;
-  border-radius: 0 var(--radius-card) var(--radius-card) 0;
   overflow: hidden;
+  /* 未滑开时整体移出容器（由 row-shell 的 overflow:hidden 裁切），杜绝边缘露出 */
+  transform: translateX(100%);
+  transition: transform var(--transition-normal);
+}
+
+.row-shell.is-swiped .swipe-actions {
+  transform: translateX(0);
+}
+
+/* 仅最后一行保留右下圆角，与列表容器圆角对齐，避免中间行出现缺口 */
+.row-shell:last-child .swipe-actions {
+  border-radius: 0 0 var(--radius-card) 0;
 }
 
 .swipe-btn {
@@ -262,7 +311,7 @@ export default {
 }
 
 .swipe-edit {
-  background: #5ac8fa;
+  background: var(--accent);
 }
 
 .swipe-delete {
@@ -334,6 +383,37 @@ export default {
   color: var(--text-secondary);
 }
 
+.row-sub-line {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.row-sub-line .row-sub {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.status-chip {
+  flex-shrink: 0;
+  margin-left: 12rpx;
+  padding: 3rpx 14rpx;
+  border-radius: var(--radius-pill);
+  font-size: 20rpx;
+  font-weight: 600;
+}
+
+.status-chip-expired {
+  background: var(--danger-light);
+  color: var(--danger);
+}
+
+.status-chip-rolled {
+  background: var(--success-light);
+  color: var(--success);
+}
+
 .row-trailing {
   display: flex;
   flex-direction: column;
@@ -357,36 +437,53 @@ export default {
   color: var(--success);
 }
 
-.row-actions-inline {
-  display: flex;
-  margin-top: 8rpx;
-}
-
-.row-actions-inline .row-link {
-  margin-right: 14rpx;
-}
-
-.row-actions-inline .row-link:last-child {
-  margin-right: 0;
-}
-
-.row-link {
-  font-size: 22rpx;
-  font-weight: 500;
-  color: var(--accent);
-}
-
-.row-link-danger {
-  color: var(--danger);
-}
-
 .empty-state {
-  padding: 100rpx 32rpx;
+  padding: 100rpx 32rpx 80rpx;
   background: var(--bg-elevated);
   border: 1px solid var(--separator);
   border-radius: var(--radius-card);
   text-align: center;
   box-shadow: var(--shadow-card);
+}
+
+.empty-illustration {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 32rpx;
+}
+
+.empty-circle {
+  position: relative;
+  width: 128rpx;
+  height: 128rpx;
+  border-radius: 50%;
+  background: var(--bg-accent);
+}
+
+.empty-circle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44rpx;
+  height: 44rpx;
+  margin: -22rpx 0 0 -22rpx;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.85;
+}
+
+.empty-circle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16rpx;
+  height: 16rpx;
+  margin: -8rpx 0 0 -8rpx;
+  border-radius: 50%;
+  background: var(--bg-elevated);
 }
 
 .empty-title {
@@ -412,7 +509,7 @@ export default {
   align-items: center;
   justify-content: space-between;
   padding: 24rpx 28rpx;
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--frosted-surface);
   border: 1px solid var(--separator);
   border-radius: var(--radius-control);
   box-shadow: var(--shadow-raised);
@@ -454,5 +551,76 @@ export default {
   background: var(--danger);
   color: var(--text-inverse);
   box-shadow: var(--shadow-xs);
+}
+
+.skeleton-list {
+  overflow: hidden;
+  background: var(--bg-elevated);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.skeleton-row {
+  display: flex;
+  align-items: center;
+  min-height: 132rpx;
+  padding: 0 28rpx;
+  border-bottom: 1px solid var(--separator);
+}
+
+.skeleton-row:last-child {
+  border-bottom: 0;
+}
+
+.skeleton-dot {
+  width: 42rpx;
+  height: 42rpx;
+  margin-right: 18rpx;
+  border-radius: 50%;
+  background: var(--bg-muted);
+}
+
+.skeleton-lines {
+  flex: 1;
+  min-width: 0;
+}
+
+.skeleton-line {
+  height: 26rpx;
+  border-radius: 999rpx;
+  background: var(--bg-muted);
+}
+
+.skeleton-line-title {
+  width: 42%;
+  margin-bottom: 12rpx;
+}
+
+.skeleton-line-sub {
+  width: 68%;
+  height: 22rpx;
+}
+
+.skeleton-line-price {
+  width: 96rpx;
+  height: 26rpx;
+  margin-left: 24rpx;
+  flex-shrink: 0;
+}
+
+.skeleton-dot,
+.skeleton-line {
+  animation: skeletonPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes skeletonPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 </style>

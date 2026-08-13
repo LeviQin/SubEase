@@ -14,6 +14,7 @@
 
       <template v-else>
         <view :class="['tab-icon', `tab-icon-${item.key}`]"></view>
+        <view v-if="item.key === 'home' && soonCount > 0" class="tab-badge">{{ soonCount > 9 ? '9+' : soonCount }}</view>
         <text class="tab-label">{{ item.label }}</text>
       </template>
     </view>
@@ -27,6 +28,10 @@ export default {
     activeTab: {
       type: String,
       default: 'home'
+    },
+    soonCount: {
+      type: Number,
+      default: 0
     }
   },
   emits: ['change', 'add'],
@@ -78,9 +83,7 @@ export default {
   padding: 12rpx 24rpx calc(24rpx + env(safe-area-inset-bottom, 0px));
   background: var(--frosted-surface);
   border-top: 1px solid var(--separator);
-  box-shadow:
-    0 -8rpx 24rpx rgba(28, 28, 30, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.68);
+  box-shadow: 0 -8rpx 24rpx rgba(28, 28, 30, 0.04);
   backdrop-filter: saturate(180%) blur(24rpx);
 }
 
@@ -150,6 +153,23 @@ export default {
 .tab-item.is-active {
   color: var(--accent);
   background: rgba(87, 112, 255, 0.1);
+}
+
+.tab-badge {
+  position: absolute;
+  top: 8rpx;
+  right: 12rpx;
+  min-width: 30rpx;
+  height: 30rpx;
+  padding: 0 8rpx;
+  border-radius: 999rpx;
+  background: var(--danger);
+  color: var(--text-inverse);
+  font-size: 18rpx;
+  font-weight: 600;
+  line-height: 30rpx;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 .tab-item:active {

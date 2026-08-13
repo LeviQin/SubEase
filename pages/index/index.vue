@@ -6,22 +6,25 @@
 
     <view class="page-body">
       <SubeaseHomeTab
-        v-if="activeTab === 'home'"
+        v-show="activeTab === 'home'"
         :summary="summaryStats"
         :upcoming-list="upcomingList"
+        :health="health"
         :amounts-hidden="amountsHidden"
         @toggle-amount="toggleAmountVisibility"
         @open-add="openAddSheet()"
         @open-detail="openDetailSheet"
+        @open-detail-suggestions="openHealthSheet"
       />
 
       <SubeaseSubscriptionsTab
-        v-if="activeTab === 'subscriptions'"
+        v-show="activeTab === 'subscriptions'"
         :subscriptions="visibleSubscriptions"
         :search-keyword="searchKeyword"
         :filter-category="filterCategory"
         :sort-order="sortOrder"
         :selected-ids="selectedIds"
+        :loading="dataLoading && !subscriptions.length"
         @update-search="updateSearch"
         @open-filter="openFilterSheet"
         @toggle-sort="toggleSort"
@@ -30,17 +33,20 @@
         @delete="openDeleteSheet"
         @toggle-select="toggleSelect"
         @batch-delete="openBatchDeleteSheet"
+        @select-all="selectAll"
         @clear-selection="clearSelection"
       />
 
       <SubeaseAnalyticsTab
-        v-if="activeTab === 'analytics'"
+        v-show="activeTab === 'analytics'"
         :analytics="analyticsSummary"
+        :monthly-trend="monthlyTrend"
+        :week-expense="weekExpense"
         :amounts-hidden="amountsHidden"
       />
 
       <SubeaseProfileTab
-        v-if="activeTab === 'profile'"
+        v-show="activeTab === 'profile'"
         :logged-in="loggedIn"
         :profile="profile"
         :settings-remind-days="settingsRemindDays"
@@ -57,6 +63,7 @@
 
     <SubeaseTabBar
       :active-tab="activeTab"
+      :soon-count="soonCount"
       @change="handleTabChange"
       @add="openAddSheet"
     />
@@ -76,16 +83,18 @@
       @footer-action="onFooterAction"
     >
       <template v-if="sheetState.type === 'filter'">
-        <view class="sheet-section-label">分类</view>
+        <view class="sheet-section-label">分类（长按自定义分类可删除）</view>
         <view class="chip-group">
           <view
             v-for="category in categoryOptions"
             :key="category"
             :class="['filter-chip', filterCategory === category ? 'is-active' : '']"
             @click="setFilterCategory(category)"
+            @longpress="removeCustomCategory(category)"
           >
             {{ category }}
           </view>
+          <view class="filter-chip filter-chip-add" @click="addCustomCategory">＋ 新建</view>
         </view>
       </template>
 
@@ -96,11 +105,13 @@
         </view>
         <text class="detail-subtitle">
           {{ currentSubscription.category }} · {{ currentSubscription.autoRenew ? '自动续费' : '手动续费' }}
+          <text v-if="currentSubscription.status === 'rolled'" class="status-tag status-tag--rolled">已自动续期</text>
+          <text v-else-if="currentSubscription.status === 'expired'" class="status-tag status-tag--expired">已过期</text>
         </text>
         <view class="detail-grid">
           <view class="detail-row">
             <text class="detail-key">下次付款</text>
-            <text class="detail-value">{{ formatShortDate(currentSubscription.nextDate) }}</text>
+            <text class="detail-value">{{ formatShortDate(currentSubscription.displayDate || currentSubscription.nextDate) }}</text>
           </view>
           <view class="detail-row">
             <text class="detail-key">支付方式</text>
@@ -218,112 +229,93 @@
         </view>
         <template v-else>
           <view class="export-tip-wrap">
-            <text class="export-tip">将当前全部 {{ subscriptions.length }} 条订阅导出为 CSV 文件（仅本人可下载，30 分钟内有效）。</text>
+            <text class="export-tip">将当前全部 {{ subscriptions.length }} 条订阅导出为 Excel 文件（仅本人可下载，30 分钟内有效）。</text>
             <text class="export-tip-sub">Android 将直接保存到手机文件；iOS 打开后点击右上角菜单选择保存。</text>
           </view>
         </template>
       </template>
 
+      <template v-else-if="sheetState.type === 'health'">
+        <view class="health-sheet-score">
+          <text class="health-sheet-score-num">{{ health.score }}</text>
+          <text class="health-sheet-score-desc">满分 100，分数越高代表订阅管理越健康</text>
+        </view>
+        <view class="health-sheet-list">
+          <view
+            v-for="(item, index) in health.suggestions"
+            :key="index"
+            :class="['health-sheet-item', `is-${item.type}`]"
+          >
+            <view class="health-sheet-dot"></view>
+            <text class="health-sheet-item-text">{{ item.text }}</text>
+          </view>
+        </view>
+      </template>
+
+      <template v-else-if="sheetState.type === 'preset'">
+        <view class="preset-search">
+          <view class="search-icon"></view>
+          <input
+            class="search-input"
+            :value="presetKeyword"
+            placeholder="搜索预设订阅"
+            placeholder-class="search-placeholder"
+            @input="onPresetSearch"
+          />
+        </view>
+        <view class="preset-tip">点击条目预填信息，价格与下次付款日可按你的实际支付情况修改</view>
+        <view class="preset-list">
+          <view
+            v-for="item in presetList"
+            :key="item.name"
+            :class="['preset-item', item.added ? 'is-added' : '']"
+            @click="usePresetItem(item)"
+          >
+            <view class="preset-main">
+              <text class="preset-name">{{ item.name }}</text>
+              <text class="preset-meta">{{ item.category }} · {{ item.cycle }} · {{ formatCurrency(item.price, item.currency) }}</text>
+            </view>
+            <text class="preset-add">{{ item.added ? '已添加' : '使用' }}</text>
+          </view>
+        </view>
+      </template>
+
+      <template v-else-if="sheetState.type === 'import'">
+        <view class="import-tip">支持直接粘贴「导出数据」生成的 CSV，或按模板填写：</view>
+        <view class="import-example">名称,金额,货币,分类,周期,下次付款日,支付方式,自动续费,备注</view>
+        <view class="import-example">Netflix,68,CNY,视频,月付,2026-09-01,微信,是,</view>
+        <textarea
+          class="import-textarea"
+          :value="importText"
+          placeholder="粘贴 CSV 内容（可含表头行）"
+          placeholder-class="form-placeholder"
+          @input="onImportInput"
+        />
+        <view class="import-actions">
+          <view class="import-btn import-btn-secondary" @click="chooseImportFile">从聊天文件导入</view>
+          <view class="import-btn import-btn-primary" @click="previewImport">解析预览</view>
+        </view>
+        <view v-if="importPreview" class="import-preview">
+          <view class="import-preview-head">
+            <text class="import-preview-ok">可导入 {{ importPreview.valid.length }} 条</text>
+            <text v-if="importDuplicateCount" class="import-preview-warn">其中 {{ importDuplicateCount }} 条与现有订阅重名将跳过</text>
+            <text v-if="importPreview.errors.length" class="import-preview-err">错误 {{ importPreview.errors.length }} 条</text>
+          </view>
+          <view v-for="(err, index) in importPreview.errors" :key="'err-' + index" class="import-error-item">{{ err }}</view>
+        </view>
+      </template>
+
       <template v-else-if="sheetState.type === 'form'">
-        <view class="form-field">
-          <text class="form-label">名称</text>
-          <input
-            class="form-input"
-            :value="formState.name"
-            placeholder="例如：Netflix"
-            placeholder-class="form-placeholder"
-            @input="updateFormField('name', $event.detail.value)"
-          />
-        </view>
-
-        <view class="form-row">
-          <view class="form-field flex-1">
-            <text class="form-label">金额</text>
-            <input
-              class="form-input"
-              type="digit"
-              :value="String(formState.price)"
-              placeholder="0.00"
-              placeholder-class="form-placeholder"
-              @input="updateFormField('price', $event.detail.value)"
-            />
-          </view>
-          <view class="form-field compact-field">
-            <text class="form-label">货币</text>
-            <picker
-              mode="selector"
-              :range="currencyOptions"
-              :value="currencyIndex"
-              @change="onCurrencyChange"
-            >
-              <view class="form-input picker-input">{{ formState.currency }}</view>
-            </picker>
-          </view>
-        </view>
-
-        <view class="form-field">
-          <text class="form-label">分类</text>
-          <view class="option-group">
-            <view
-              v-for="item in categoryOptions"
-              :key="item"
-              :class="['option-chip', formState.category === item ? 'is-active' : '']"
-              @click="updateFormField('category', item)"
-            >
-              {{ item }}
-            </view>
-          </view>
-        </view>
-
-        <view class="form-field">
-          <text class="form-label">周期</text>
-          <view class="option-group">
-            <view
-              v-for="item in ['月付', '季度付', '年付']"
-              :key="item"
-              :class="['option-chip', formState.cycle === item ? 'is-active' : '']"
-              @click="updateFormField('cycle', item)"
-            >
-              {{ item }}
-            </view>
-          </view>
-        </view>
-
-        <view class="form-field">
-          <text class="form-label">下次付款日</text>
-          <picker mode="date" :value="formState.nextDate" @change="updateFormField('nextDate', $event.detail.value)">
-            <view class="form-input picker-input">{{ formState.nextDate }}</view>
-          </picker>
-        </view>
-
-        <view class="form-field">
-          <text class="form-label">支付方式</text>
-          <input
-            class="form-input"
-            :value="formState.method"
-            placeholder="微信 / 支付宝 / 信用卡"
-            placeholder-class="form-placeholder"
-            @input="updateFormField('method', $event.detail.value)"
-          />
-        </view>
-
-        <view class="switch-row">
-          <text class="switch-label">自动续费</text>
-          <view :class="['switch', formState.autoRenew ? 'is-on' : '']" @click="updateFormField('autoRenew', !formState.autoRenew)">
-            <view class="switch-dot"></view>
-          </view>
-        </view>
-
-        <view class="form-field">
-          <text class="form-label">备注</text>
-          <input
-            class="form-input"
-            :value="formState.notes"
-            placeholder="选填"
-            placeholder-class="form-placeholder"
-            @input="updateFormField('notes', $event.detail.value)"
-          />
-        </view>
+        <SubeaseSubscriptionFormSheet
+          :form="formState"
+          :category-options="categoryOptions"
+          :currency-options="currencyOptions"
+          :currency-index="currencyIndex"
+          @update-field="onFormFieldUpdate"
+          @currency-change="onCurrencyChange"
+          @add-category="addCustomCategory"
+          @open-preset="openPresetSheet"
+        />
       </template>
 
     </SubeaseSheet>
@@ -331,6 +323,7 @@
     <SubeaseToast
       :visible="toastState.visible"
       :message="toastState.message"
+      :top="toastTop"
     />
   </view>
 </template>
@@ -340,24 +333,40 @@ import SubeaseAnalyticsTab from '@/components/subease/SubeaseAnalyticsTab.vue'
 import SubeaseHomeTab from '@/components/subease/SubeaseHomeTab.vue'
 import SubeaseProfileTab from '@/components/subease/SubeaseProfileTab.vue'
 import SubeaseSheet from '@/components/subease/SubeaseSheet.vue'
+import SubeaseSubscriptionFormSheet from '@/components/subease/SubeaseSubscriptionFormSheet.vue'
 import SubeaseSubscriptionsTab from '@/components/subease/SubeaseSubscriptionsTab.vue'
 import SubeaseTabBar from '@/components/subease/SubeaseTabBar.vue'
 import SubeaseToast from '@/components/subease/SubeaseToast.vue'
 import SubeaseWeChatProfileForm from '@/components/subease/SubeaseWeChatProfileForm.vue'
 import {
   cloneSubscription,
+  countUpcomingSoon,
   createSubscriptionPayload,
   formatCurrency,
   formatShortDate,
   getAnalyticsSummary,
   getDaysUntil,
+  getMonthlyTrend,
+  getSubscriptionHealth,
   getSummaryStats,
   getUpcomingSubscriptions,
-  getVisibleSubscriptions
+  getVisibleSubscriptions,
+  getWeekExpense,
+  normalizeSubscriptions,
+  parseSubscriptionsCsv
 } from '@/utils/subease/helpers'
-import { CATEGORY_OPTIONS, CURRENCY_OPTIONS, DEFAULT_PROFILE } from '@/utils/subease/mock'
+import {
+  loadCustomCategories,
+  loadRatesCache,
+  loadSubscriptionsCache,
+  saveCustomCategories,
+  saveRatesCache,
+  saveSubscriptionsCache,
+  clearSubscriptionsCache
+} from '@/utils/subease/cache'
+import { CATEGORY_OPTIONS, CURRENCY_OPTIONS, DEFAULT_PROFILE, POPULAR_SUBSCRIPTIONS } from '@/utils/subease/constants'
 import { createEmptyFormState, createInitialState } from '@/utils/subease/state'
-import { useSubeaseAuthStore } from '@/stores/subease/auth'
+import { useSubeaseAuthStore, getWeixinLoginCode } from '@/stores/subease/auth'
 import { updateProfile, wxLogin } from '@/api/subease/auth'
 import {
   getSubscriptionList,
@@ -382,6 +391,7 @@ export default {
     SubeaseProfileTab,
     SubeaseTabBar,
     SubeaseSheet,
+    SubeaseSubscriptionFormSheet,
     SubeaseToast,
     SubeaseWeChatProfileForm
   },
@@ -389,12 +399,14 @@ export default {
     return {
       ...createInitialState(),
       subscriptions: [],
-      categoryOptions: CATEGORY_OPTIONS,
+      customCategories: [],
       currencyOptions: CURRENCY_OPTIONS,
+      presetKeyword: '',
       remindDaysOptions: [1, 3, 7, 15, 30],
       settingsRemindDays: this._loadRemindDays(),
       settingsPickerKey: '',
       toastTimer: null,
+      loginTimeoutId: null,
       statusBarHeight: 0,
       navBarHeight: 44,
       loginLoading: false,
@@ -418,7 +430,10 @@ export default {
         filename: '',
         url: ''
       },
-      exportLoading: false
+      exportLoading: false,
+      importText: '',
+      importPreview: null,
+      importLoading: false
     }
   },
   created() {
@@ -431,14 +446,26 @@ export default {
       this.navBarHeight = menuButtonInfo.height + 8
     }
     // #endif
+    this.customCategories = loadCustomCategories()
     this.loadRates()
   },
   onPullDownRefresh() {
-    this.loadRates().finally(() => {
+    this.loadRates(true).finally(() => {
       this.fetchSubscriptions().finally(() => {
         uni.stopPullDownRefresh()
       })
     })
+  },
+  onShareAppMessage() {
+    return {
+      title: '归期本 · 订阅到期提醒，再也不忘续费',
+      path: '/pages/index/index'
+    }
+  },
+  onShareTimeline() {
+    return {
+      title: '归期本 · 订阅到期提醒，再也不忘续费'
+    }
   },
   computed: {
     navBarStyle() {
@@ -456,14 +483,16 @@ export default {
       }
       return titleMap[this.activeTab] || '归期本'
     },
+    toastTop() {
+      // 自定义导航栏下方 12px 处展示，避免被导航栏遮挡
+      return `${this.statusBarHeight + this.navBarHeight + 12}px`
+    },
     summaryStats() {
       return getSummaryStats(this.subscriptions, this.rates)
     },
     upcomingList() {
-      return getUpcomingSubscriptions(this.subscriptions, this.settingsRemindDays).map((item) => ({
-        ...item,
-        days: getDaysUntil(item.nextDate)
-      }))
+      // days/displayDate/status 已在 normalizeSubscriptions 时计算好
+      return getUpcomingSubscriptions(this.subscriptions, this.settingsRemindDays)
     },
     visibleSubscriptions() {
       return getVisibleSubscriptions(
@@ -475,6 +504,54 @@ export default {
     },
     analyticsSummary() {
       return getAnalyticsSummary(this.subscriptions, this.rates)
+    },
+    monthlyTrend() {
+      return getMonthlyTrend(this.subscriptions, this.rates, 6)
+    },
+    weekExpense() {
+      return getWeekExpense(this.subscriptions, this.rates)
+    },
+    soonCount() {
+      return countUpcomingSoon(this.subscriptions, 3)
+    },
+    health() {
+      return getSubscriptionHealth(this.subscriptions)
+    },
+    categoryOptions() {
+      // 动态合并：默认分类 + 自定义分类 + 订阅数据中已使用的其他分类（去重保序）
+      const seen = new Set()
+      const merged = []
+      const push = (cat) => {
+        const key = String(cat || '').trim()
+        if (!key || seen.has(key)) return
+        seen.add(key)
+        merged.push(key)
+      }
+      CATEGORY_OPTIONS.forEach(push)
+      this.customCategories.forEach(push)
+      this.subscriptions.forEach((item) => push(item.category))
+      return merged
+    },
+    customCategoryNames() {
+      return new Set(this.customCategories)
+    },
+    presetList() {
+      const keyword = (this.presetKeyword || '').trim().toLowerCase()
+      const existing = new Set(this.subscriptions.map((item) => String(item.name || '').trim().toLowerCase()))
+      return POPULAR_SUBSCRIPTIONS.filter((item) => {
+        const matched = !keyword || String(item.name || '').toLowerCase().includes(keyword)
+        return matched
+      }).map((item) => ({
+        ...item,
+        added: existing.has(String(item.name || '').trim().toLowerCase())
+      }))
+    },
+    importDuplicateCount() {
+      if (!this.importPreview || !this.importPreview.valid.length) return 0
+      const existing = new Set(this.subscriptions.map((item) => String(item.name || '').trim().toLowerCase()))
+      return this.importPreview.valid.filter(
+        (item) => existing.has(String(item.name || '').trim().toLowerCase())
+      ).length
     },
     sheetTitle() {
       const titleMap = {
@@ -488,7 +565,14 @@ export default {
         feedback: '意见反馈',
         'my-feedbacks': '我的反馈',
         export: '导出数据',
-        form: this.formState.id ? '编辑订阅' : '新增订阅'
+        preset: '热门订阅预设库',
+        health: '订阅健康建议',
+        import: '批量导入',
+        form: this.formState.id
+          ? '编辑订阅'
+          : this.sheetState.payload?.presetName
+            ? `添加：${this.sheetState.payload.presetName}`
+            : '新增订阅'
       }
       return titleMap[this.sheetState.type] || ''
     },
@@ -594,6 +678,13 @@ export default {
           { key: 'save-export', text: '生成并下载', type: 'primary', disabled: loading }
         ]
       }
+      if (t === 'import') {
+        const canImport = this.importPreview && this.importPreview.valid.length > 0
+        return [
+          { key: 'cancel', text: '取消', type: 'secondary', disabled: this.importLoading },
+          { key: 'import-confirm', text: this.importLoading ? '导入中...' : '确认导入', type: 'primary', disabled: !canImport }
+        ]
+      }
       if (t === 'form') {
         return [
           { key: 'cancel', text: '取消', type: 'secondary' },
@@ -606,6 +697,20 @@ export default {
   watch: {
     settingsRemindDays(val) {
       this._saveRemindDays(val)
+    },
+    silentLoginLoading(loading) {
+      if (this.loginTimeoutId) {
+        clearTimeout(this.loginTimeoutId)
+        this.loginTimeoutId = null
+      }
+      if (!loading) return
+      // 登录遮罩超时兜底：8s 仍未完成时提示，避免用户无限等待
+      this.loginTimeoutId = setTimeout(() => {
+        this.loginTimeoutId = null
+        if (!this.silentLoginLoading) return
+        if (this.loggedIn) return
+        this.showToast('登录较慢，请检查网络后稍等片刻')
+      }, 8000)
     },
     authReady: {
       handler(ready) {
@@ -636,6 +741,10 @@ export default {
   beforeUnmount() {
     if (this.toastTimer) {
       clearTimeout(this.toastTimer)
+    }
+    if (this.loginTimeoutId) {
+      clearTimeout(this.loginTimeoutId)
+      this.loginTimeoutId = null
     }
   },
   methods: {
@@ -687,38 +796,7 @@ export default {
         avatarFilePath: avatarFilePath || avatarPreviewUrl
       }
     },
-    async getWeixinLoginCode() {
-      return await new Promise((resolve, reject) => {
-        // #ifdef MP-WEIXIN
-        wx.login({
-          success: (res) => {
-            if (res.code) {
-              resolve(res.code)
-              return
-            }
-            reject(new Error('微信登录 code 获取失败'))
-          },
-          fail: reject
-        })
-        // #endif
-
-        // #ifndef MP-WEIXIN
-        uni.login({
-          provider: 'weixin',
-          success: (res) => {
-            if (res.code) {
-              resolve(res.code)
-              return
-            }
-            reject(new Error('uni.login 未返回 code'))
-          },
-          fail: reject
-        })
-        // #endif
-      })
-    },
-    requireLogin(options = {}) {
-      if (this.loggedIn) return true
+    requireLogin(options = {}) {      if (this.loggedIn) return true
       if (this.silentLoginLoading) return false
       if (this.loginLoading) return false
       if (options.silent) return false
@@ -743,7 +821,7 @@ export default {
         // ignore
       }
     },
-    async fetchSubscriptions() {
+    async fetchSubscriptions(options = {}) {
       if (!this.loggedIn) {
         this.subscriptions = []
         return
@@ -751,11 +829,29 @@ export default {
       if (this.dataLoading) return
       this.dataLoading = true
       try {
+        // 先渲染本地缓存，弱网/离线场景也能秒开，避免请求期间白屏
+        const cached = loadSubscriptionsCache()
+        if (cached && cached.length) {
+          this.subscriptions = normalizeSubscriptions(cached)
+        }
         const list = await getSubscriptionList()
-        this.subscriptions = list || []
+        const normalized = normalizeSubscriptions(list || [])
+        this.subscriptions = normalized
+        saveSubscriptionsCache(normalized)
       } catch (error) {
         console.error('[Subease] 获取订阅列表失败', error)
-        this.subscriptions = []
+        const fallback = loadSubscriptionsCache()
+        if (fallback && fallback.length) {
+          this.subscriptions = normalizeSubscriptions(fallback)
+          if (!options.silent) {
+            this.showToast('网络异常，当前展示的是缓存数据')
+          }
+        } else {
+          this.subscriptions = []
+          if (!options.silent) {
+            this.showToast(error.message || '获取订阅失败，请下拉重试')
+          }
+        }
       } finally {
         this.dataLoading = false
       }
@@ -787,6 +883,9 @@ export default {
     clearSelection() {
       this.selectedIds = []
     },
+    selectAll() {
+      this.selectedIds = this.visibleSubscriptions.map((item) => item.id)
+    },
     openSheet(type, payload = null) {
       this.sheetState = {
         visible: true,
@@ -806,6 +905,51 @@ export default {
     },
     setFilterCategory(category) {
       this.filterCategory = this.filterCategory === category ? '' : category
+    },
+    addCustomCategory() {
+      // 微信 showModal 支持 editable 输入（基础库 2.17.1+）
+      // #ifndef MP-WEIXIN
+      this.showToast('仅微信小程序支持自定义分类')
+      return
+      // #endif
+      const doAdd = (name) => {
+        const trimmed = (name || '').trim()
+        if (!trimmed) return
+        if (trimmed.length > 6) {
+          this.showToast('分类名称最多 6 个字')
+          return
+        }
+        if (this.categoryOptions.includes(trimmed)) {
+          this.showToast('该分类已存在')
+          return
+        }
+        this.customCategories = [...this.customCategories, trimmed]
+        saveCustomCategories(this.customCategories)
+        this.showToast(`已添加分类「${trimmed}」`)
+      }
+      uni.showModal({
+        title: '新建分类',
+        editable: true,
+        placeholderText: '例如：云存储',
+        success: (res) => {
+          if (res.confirm) doAdd(res.content)
+        }
+      })
+    },
+    removeCustomCategory(category) {
+      if (!this.customCategoryNames.has(category)) return
+      uni.showModal({
+        title: '删除分类',
+        content: `确定删除分类「${category}」？已有订阅不受影响。`,
+        confirmColor: '#FF3B30',
+        success: (res) => {
+          if (!res.confirm) return
+          this.customCategories = this.customCategories.filter((item) => item !== category)
+          saveCustomCategories(this.customCategories)
+          if (this.filterCategory === category) this.filterCategory = ''
+          this.showToast('已删除分类')
+        }
+      })
     },
     clearFilter() {
       this.filterCategory = ''
@@ -852,6 +996,112 @@ export default {
           }
       this.openSheet('form', { id })
     },
+    openPresetSheet() {
+      if (!this.requireLogin()) return
+      this.presetKeyword = ''
+      this.openSheet('preset')
+    },
+    openHealthSheet() {
+      if (!this.requireLogin()) return
+      this.openSheet('health')
+    },
+    openImportSheet() {
+      if (!this.requireLogin()) return
+      this.importText = ''
+      this.importPreview = null
+      this.openSheet('import')
+    },
+    onImportInput(event) {
+      this.importText = event.detail.value
+      this.importPreview = null
+    },
+    previewImport() {
+      if (!this.importText.trim()) {
+        this.showToast('请先粘贴 CSV 内容')
+        return
+      }
+      this.importPreview = parseSubscriptionsCsv(this.importText)
+    },
+    chooseImportFile() {
+      // #ifdef MP-WEIXIN
+      wx.chooseMessageFile({
+        count: 1,
+        type: 'file',
+        extension: ['csv', 'txt'],
+        success: (res) => {
+          const file = res.tempFiles && res.tempFiles[0]
+          if (!file) return
+          const fs = uni.getFileSystemManager()
+          try {
+            const content = fs.readFileSync(file.path, 'utf8')
+            this.importText = content
+            this.importPreview = null
+            this.showToast('已读取文件，点击解析预览')
+          } catch (error) {
+            console.error('[Subease] 读取导入文件失败', error)
+            this.showToast('读取文件失败，请手动粘贴内容')
+          }
+        },
+        fail: () => {}
+      })
+      // #endif
+      // #ifndef MP-WEIXIN
+      this.showToast('仅微信小程序支持从聊天文件导入')
+      // #endif
+    },
+    async confirmImport() {
+      if (!this.importPreview || !this.importPreview.valid.length) return
+      if (this.importLoading) return
+      // 跳过与现有订阅重名的条目，避免重复数据
+      const existing = new Set(this.subscriptions.map((item) => String(item.name || '').trim().toLowerCase()))
+      const toImport = this.importPreview.valid.filter(
+        (item) => !existing.has(String(item.name || '').trim().toLowerCase())
+      )
+      const skipped = this.importPreview.valid.length - toImport.length
+      if (!toImport.length) {
+        this.showToast('所有条目均与现有订阅重名')
+        return
+      }
+      this.importLoading = true
+      let count = 0
+      try {
+        for (const item of toImport) {
+          const payload = createSubscriptionPayload({ ...createEmptyFormState(), ...item }, '')
+          await createSubscription(payload)
+          count += 1
+        }
+        await this.fetchSubscriptions()
+        this.closeSheet()
+        this.showToast(`已导入 ${count} 条${skipped ? `，跳过 ${skipped} 条重名` : ''}`)
+        track('subscribe_batch_import', { count, skipped })
+      } catch (error) {
+        console.error('[Subease] 批量导入失败', error)
+        this.showToast(error.message || '导入失败，请重试')
+      } finally {
+        this.importLoading = false
+      }
+    },
+    usePresetItem(item) {
+      if (!this.requireLogin()) return
+      if (item.added) {
+        this.showToast('该订阅已在列表中，可在「全部订阅」中编辑')
+        return
+      }
+      // 预填表单：预设价格/周期仅为参考，用户可按实际支付情况修改后保存
+      this.formState = {
+        ...createEmptyFormState(),
+        name: item.name,
+        price: item.price,
+        currency: item.currency,
+        cycle: item.cycle,
+        category: item.category,
+        autoRenew: item.autoRenew
+      }
+      this.openSheet('form', { presetName: item.name })
+    },
+    onPresetSearch(event) {
+      this.presetKeyword = event.detail.value
+    },
     updateFormField(field, value) {
       this.formState = {
         ...this.formState,
@@ -863,6 +1113,10 @@ export default {
           nextDate: this._calcNextDate(value)
         }
       }
+    },
+    onFormFieldUpdate(payload) {
+      if (!payload) return
+      this.updateFormField(payload.field, payload.value)
     },
     _calcNextDate(cycle) {
       // 以表单当前日期为基准，避免切换周期时覆盖用户已选日期
@@ -904,12 +1158,14 @@ export default {
           if (idx >= 0) {
             const nextList = [...this.subscriptions]
             nextList.splice(idx, 1, updated)
-            this.subscriptions = nextList
+            this.subscriptions = normalizeSubscriptions(nextList)
+            saveSubscriptionsCache(this.subscriptions)
           }
           this.showToast('已更新')
         } else {
           const created = await createSubscription(payload)
-          this.subscriptions = [created, ...this.subscriptions]
+          this.subscriptions = normalizeSubscriptions([created, ...this.subscriptions])
+          saveSubscriptionsCache(this.subscriptions)
           this.showToast('已添加')
           track('subscribe_add', { currency: created.currency })
         }
@@ -923,7 +1179,8 @@ export default {
       const id = this.sheetState.payload?.id
       try {
         await deleteSubscription(id)
-        this.subscriptions = this.subscriptions.filter((item) => item.id !== id)
+        this.subscriptions = normalizeSubscriptions(this.subscriptions.filter((item) => item.id !== id))
+        saveSubscriptionsCache(this.subscriptions)
         this.selectedIds = this.selectedIds.filter((item) => item !== id)
         this.closeSheet()
         this.showToast('已删除')
@@ -936,7 +1193,10 @@ export default {
       if (!this.requireLogin()) return
       try {
         await batchDeleteSubscriptions(this.selectedIds)
-        this.subscriptions = this.subscriptions.filter((item) => !this.selectedIds.includes(item.id))
+        this.subscriptions = normalizeSubscriptions(
+          this.subscriptions.filter((item) => !this.selectedIds.includes(item.id))
+        )
+        saveSubscriptionsCache(this.subscriptions)
         this.selectedIds = []
         this.closeSheet()
         this.showToast('已删除')
@@ -959,6 +1219,16 @@ export default {
       if (action === '导出数据') {
         if (!this.requireLogin()) return
         this.openExportSheet()
+        return
+      }
+      if (action === '年度账单报告') {
+        if (!this.requireLogin()) return
+        uni.navigateTo({ url: '/pages/report/annual' })
+        return
+      }
+      if (action === '批量导入') {
+        if (!this.requireLogin()) return
+        this.openImportSheet()
         return
       }
       if (action === '关于') {
@@ -1039,7 +1309,7 @@ export default {
       this.exportData = { filename: '', url: '' }
       this.openSheet('export')
     },
-    async exportCsvFile() {
+    async exportXlsxFile() {
       if (this.exportLoading) return
       if (!this.subscriptions.length) {
         this.showToast('暂无可导出的订阅数据')
@@ -1064,12 +1334,12 @@ export default {
       return new Promise((resolve, reject) => {
         const authStore = useSubeaseAuthStore()
         // 后端返回相对路径，需拼接 API 域名；若为绝对地址则直接使用
-        const url = /^https?:\/\//.test(relativeUrl) ? relativeUrl : getApiBaseUrl() + relativeUrl
+        const isAbsolute = /^https?:\/\//.test(relativeUrl)
+        const url = isAbsolute ? relativeUrl : getApiBaseUrl() + relativeUrl
         this.exportStatus = '正在下载文件...'
         uni.downloadFile({
           url,
-          // 下载接口需要鉴权，需手动携带 accessToken（request 拦截器未覆盖 downloadFile）
-          header: authStore.accessToken ? { Authorization: `Bearer ${authStore.accessToken}` } : {},
+          header: !isAbsolute && authStore.accessToken ? { Authorization: `Bearer ${authStore.accessToken}` } : {},
           success: (res) => {
             if (res.statusCode !== 200) {
               reject(new Error('导出文件下载失败'))
@@ -1088,7 +1358,7 @@ export default {
               wx.saveFileToDisk({
                 filePath: tempFilePath,
                 success: () => {
-                  this.showToast('CSV 文件已保存到手机')
+                  this.showToast('Excel 文件已保存到手机')
                   resolve()
                 },
                 fail: () => {
@@ -1144,7 +1414,7 @@ export default {
           })
         })
         const accepted = res && res[SUBSCRIBE_TEMPLATE_ID] === 'accept'
-        await reportSubscribeGrant(!!accepted)
+        await reportSubscribeGrant(!!accepted, 'reminder')
         if (accepted) {
           track('reminder_optin')
           this.showToast('到期提醒推送已开启')
@@ -1158,28 +1428,42 @@ export default {
         // #endif
       } catch (error) {
         console.error('[Subease] 订阅消息授权失败', error)
-        this.showToast(error.message || '开启失败，请稍后重试')
+        // 微信限制订阅授权必须由用户点击手势触发，收到此类错误时给出友好提示
+        const raw = String((error && (error.errMsg || error.message)) || '')
+        if (/TAP gesture|user gesture|requestSubscribeMessage:fail/i.test(raw)) {
+          this.showToast('请点击「开启到期提醒推送」按钮触发')
+        } else {
+          this.showToast(error.message || '开启失败，请稍后重试')
+        }
       }
     },
     openAgreement() {
       uni.navigateTo({ url: '/pages/legal/agreement' })
     },
-    async loadRates() {
+    async loadRates(force = false) {
       try {
+        if (!force) {
+          const cached = loadRatesCache()
+          if (cached) {
+            this.rates = cached
+            return
+          }
+        }
         const rates = await getCurrencyRates()
         this.rates = rates || {}
+        saveRatesCache(this.rates)
       } catch (error) {
         console.error('[Subease] 获取汇率失败', error)
       }
     },
-    async simulateLogin() {
+    async handleLogin() {
       if (this.loginLoading) return
       const authStore = useSubeaseAuthStore()
       const profilePayload = this.getWeChatProfilePayload({ requireAvatar: true })
       if (!profilePayload) return
       this.loginLoading = true
       try {
-        const code = await this.getWeixinLoginCode()
+        const code = await getWeixinLoginCode()
         const data = await wxLogin(code)
         authStore.setAuth({
           accessToken: data.accessToken,
@@ -1200,10 +1484,10 @@ export default {
         this.closeSheet()
         this.showToast('登录成功')
         track('login_success')
-        // 登录成功后引导开启到期提醒推送（不阻塞登录流程）
-        if (SUBSCRIBE_TEMPLATE_ID) {
-          this.requestSubscribeMessage()
-        }
+        // 注意：不在登录后自动请求订阅消息授权。
+        // 微信要求 requestSubscribeMessage 必须由用户主动点击手势触发，
+        // 异步回调中调用会被拒绝（fail can only be invoked by user TAP gesture）。
+        // 用户可在「我的」页通过「开启到期提醒推送」入口主动开启。
       } catch (error) {
         console.error('[Subease] 登录失败', error)
         this.showToast(error.message || '登录失败，请重试')
@@ -1234,6 +1518,7 @@ export default {
       this.subscriptions = []
       this.filterCategory = ''
       this.selectedIds = []
+      clearSubscriptionsCache()
       this.showToast('已退出')
     },
     showToast(message) {
@@ -1263,12 +1548,13 @@ export default {
       else if (key === 'delete-confirm' && t === 'confirm-delete') this.confirmDelete()
       else if (key === 'delete-confirm' && t === 'batch-delete') this.confirmBatchDelete()
       else if (key === 'cancel-login' && t === 'login') this.cancelLoginSheet()
-      else if (key === 'submit-wechat-profile' && t === 'login') this.simulateLogin()
+      else if (key === 'submit-wechat-profile' && t === 'login') this.handleLogin()
       else if (key === 'submit-wechat-profile' && t === 'profile-sync') this.syncWeChatProfile()
       else if (key === 'save') this.saveForm()
       else if (key === 'submit-feedback') this.submitFeedbackForm()
       else if (key === 'close') this.closeSheet()
-      else if (key === 'save-export') this.exportCsvFile()
+      else if (key === 'save-export') this.exportXlsxFile()
+      else if (key === 'import-confirm' && t === 'import') this.confirmImport()
     },
     openRemindDaysSheet() {
       this.settingsPickerKey = 'remind'
@@ -1311,7 +1597,7 @@ export default {
   right: 0;
   bottom: 0;
   height: 28rpx;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.46));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0), var(--nav-fade));
   pointer-events: none;
 }
 
@@ -1326,7 +1612,7 @@ export default {
   flex: 1;
   min-height: 0;
   background:
-    radial-gradient(circle at top center, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0)),
+    radial-gradient(circle at top center, var(--page-glow), rgba(255, 255, 255, 0)),
     var(--app-bg);
 }
 
@@ -1420,6 +1706,13 @@ export default {
   box-shadow: var(--shadow-xs);
 }
 
+.filter-chip-add {
+  border: 1px dashed var(--separator-strong);
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .detail-price-row {
   display: flex;
   align-items: baseline;
@@ -1445,6 +1738,26 @@ export default {
   margin-bottom: 28rpx;
   font-size: 26rpx;
   color: var(--text-tertiary);
+}
+
+.status-tag {
+  display: inline-block;
+  padding: 4rpx 14rpx;
+  margin-left: 12rpx;
+  border-radius: var(--radius-pill);
+  font-size: 20rpx;
+  font-weight: 600;
+  vertical-align: 2rpx;
+}
+
+.status-tag--rolled {
+  background: var(--success-light);
+  color: var(--success);
+}
+
+.status-tag--expired {
+  background: var(--danger-light);
+  color: var(--danger);
 }
 
 .detail-grid {
@@ -1866,5 +2179,281 @@ export default {
   margin-top: 12rpx;
   font-size: 22rpx;
   color: var(--text-tertiary);
+}
+
+.preset-search {
+  display: flex;
+  align-items: center;
+  height: 80rpx;
+  padding: 0 24rpx;
+  margin-bottom: 20rpx;
+  background: var(--bg-elevated);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-card);
+}
+
+.preset-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.search-icon {
+  width: 32rpx;
+  height: 32rpx;
+  margin-right: 12rpx;
+  background-color: var(--text-tertiary);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='10' cy='10' r='7' fill='none' stroke='black' stroke-width='2.5'/%3E%3Cline x1='15.5' y1='15.5' x2='21' y2='21' stroke='black' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='10' cy='10' r='7' fill='none' stroke='black' stroke-width='2.5'/%3E%3Cline x1='15.5' y1='15.5' x2='21' y2='21' stroke='black' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  flex-shrink: 0;
+}
+
+.search-input {
+  flex: 1;
+  height: 80rpx;
+  font-size: 28rpx;
+  color: var(--text-primary);
+}
+
+.search-placeholder {
+  color: var(--text-quaternary);
+}
+
+.preset-tip {
+  margin-bottom: 16rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+
+.preset-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.preset-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 104rpx;
+  padding: 0 28rpx;
+  margin-bottom: 12rpx;
+  background: var(--bg-subtle);
+  border-radius: var(--radius-control);
+}
+
+.preset-item:active {
+  background: var(--bg-muted);
+}
+
+.preset-item.is-added {
+  opacity: 0.55;
+}
+
+.preset-main {
+  flex: 1;
+  min-width: 0;
+  margin-right: 20rpx;
+}
+
+.preset-name {
+  display: block;
+  margin-bottom: 6rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.preset-meta {
+  font-size: 22rpx;
+  color: var(--text-secondary);
+}
+
+.preset-add {
+  flex-shrink: 0;
+  padding: 12rpx 26rpx;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--text-inverse);
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.preset-item.is-added .preset-add {
+  background: var(--bg-muted);
+  color: var(--text-tertiary);
+}
+
+.health-sheet-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24rpx 0 32rpx;
+}
+
+.health-sheet-score-num {
+  font-size: 96rpx;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -2rpx;
+  color: var(--accent);
+}
+
+.health-sheet-score-desc {
+  margin-top: 14rpx;
+  font-size: 24rpx;
+  color: var(--text-tertiary);
+}
+
+.health-sheet-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.health-sheet-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 26rpx 28rpx;
+  margin-bottom: 14rpx;
+  background: var(--bg-subtle);
+  border-radius: var(--radius-control);
+}
+
+.health-sheet-dot {
+  flex-shrink: 0;
+  width: 16rpx;
+  height: 16rpx;
+  margin: 10rpx 18rpx 0 0;
+  border-radius: 50%;
+  background: var(--warning);
+}
+
+.health-sheet-item.is-danger .health-sheet-dot {
+  background: var(--danger);
+}
+
+.health-sheet-item.is-info .health-sheet-dot {
+  background: var(--accent);
+}
+
+.health-sheet-item-text {
+  flex: 1;
+  font-size: 26rpx;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+.import-tip {
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.import-example {
+  margin-top: 8rpx;
+  padding: 14rpx 20rpx;
+  background: var(--bg-subtle);
+  border-radius: var(--radius-control);
+  font-size: 22rpx;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono, monospace);
+}
+
+.import-textarea {
+  width: 100%;
+  min-height: 240rpx;
+  padding: 24rpx 28rpx;
+  margin-top: 20rpx;
+  background: var(--bg-elevated);
+  border: 1px solid var(--separator-strong);
+  border-radius: var(--radius-control);
+  font-size: 26rpx;
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+
+.import-textarea:focus {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.import-actions {
+  display: flex;
+  margin-top: 20rpx;
+}
+
+.import-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88rpx;
+  border-radius: var(--radius-control);
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.import-btn-secondary {
+  margin-right: 16rpx;
+  background: var(--bg-muted);
+  color: var(--text-primary);
+}
+
+.import-btn-primary {
+  background: var(--accent);
+  color: var(--text-inverse);
+}
+
+.import-btn:active {
+  transform: scale(0.98);
+}
+
+.import-preview {
+  margin-top: 24rpx;
+  padding: 22rpx 24rpx;
+  background: var(--bg-subtle);
+  border-radius: var(--radius-control);
+}
+
+.import-preview-head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12rpx;
+}
+
+.import-preview-ok {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--success);
+}
+
+.import-preview-err {
+  margin-left: 20rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.import-preview-warn {
+  margin-left: 20rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: var(--warning);
+}
+
+.import-error-item {
+  padding: 8rpx 0;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: var(--danger);
 }
 </style>

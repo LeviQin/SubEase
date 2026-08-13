@@ -4,7 +4,6 @@
 
 	export default {
 		onLaunch: function() {
-			console.log('App Launch')
 			const authStore = useSubeaseAuthStore()
 			authStore.hydrate()
 			authStore.wxSilentLogin()
@@ -18,10 +17,8 @@
 				})
 		},
 		onShow: function() {
-			console.log('App Show')
 		},
 		onHide: function() {
-			console.log('App Hide')
 		}
 	}
 </script>
@@ -95,12 +92,64 @@
 		--focus-ring: 0 0 0 6rpx rgba(87, 112, 255, 0.12);
 		--frosted-surface: rgba(255, 255, 255, 0.78);
 		--frosted-border: rgba(255, 255, 255, 0.52);
+		--nav-fade: rgba(255, 255, 255, 0.46);
+		--page-glow: rgba(255, 255, 255, 0.72);
 		--page-gutter: 36rpx;
 		--content-bottom-space: calc(132rpx + env(safe-area-inset-bottom, 0px));
 
 		--transition-fast: #{$duration-fast} #{$ease-out};
 		--transition-normal: #{$duration-normal} #{$ease-out};
 		--transition-slow: #{$duration-slow} #{$ease-out};
+	}
+
+	/* ── 深色模式（跟随系统）──
+	   微信小程序基础库 2.11.0+ 支持 prefers-color-scheme，
+	   需在 manifest.json 的 mp-weixin 开启 "darkmode": true。 */
+	@media (prefers-color-scheme: dark) {
+		page {
+			--app-bg: #{$dark-bg-root};
+			--bg-grouped: #{$dark-bg-grouped};
+			--bg-elevated: #{$dark-bg-elevated};
+			--bg-subtle: #{$dark-bg-subtle};
+			--bg-muted: #{$dark-bg-muted};
+			--bg-overlay: #{$dark-bg-overlay};
+			--bg-accent: #{$dark-bg-accent};
+
+			--text-primary: #{$dark-text-primary};
+			--text-secondary: #{$dark-text-secondary};
+			--text-tertiary: #{$dark-text-tertiary};
+			--text-quaternary: #{$dark-text-quaternary};
+			--text-inverse: #{$dark-text-inverse};
+
+			--accent: #{$dark-color-accent};
+			--accent-dark: #{$dark-color-accent-dark};
+			--accent-light: #{$dark-color-accent-soft};
+			--warning: #{$dark-color-warning};
+			--danger: #{$dark-color-danger};
+			--danger-light: rgba(255, 69, 58, 0.16);
+			--success: #{$dark-color-success};
+			--success-light: rgba(48, 209, 88, 0.16);
+			--warning-light: rgba(255, 159, 10, 0.16);
+
+			--separator: #{$dark-border-light};
+			--separator-strong: #{$dark-border-medium};
+			--separator-heavy: #{$dark-border-strong};
+
+			--shadow-xs: #{$dark-shadow-xs};
+			--shadow-sm: #{$dark-shadow-sm};
+			--shadow-md: #{$dark-shadow-md};
+			--shadow-lg: #{$dark-shadow-lg};
+			--shadow-xl: #{$dark-shadow-xl};
+			--shadow-card: #{$dark-shadow-xs};
+			--shadow-raised: #{$dark-shadow-sm};
+			--shadow-modal: #{$dark-shadow-lg};
+			--focus-ring: 0 0 0 6rpx rgba(109, 131, 255, 0.2);
+
+			--frosted-surface: #{$dark-frosted-surface};
+			--frosted-border: #{$dark-frosted-border};
+			--nav-fade: #{$dark-nav-fade};
+			--page-glow: #{$dark-page-glow};
+		}
 	}
 
 	@media (min-width: 768px) {

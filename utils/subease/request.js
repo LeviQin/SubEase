@@ -38,6 +38,14 @@ export function getApiBaseUrl() {
   try {
     const customBaseUrl = uni.getStorageSync(API_BASE_URL_STORAGE_KEY)
     if (customBaseUrl) {
+      // #ifdef MP-WEIXIN
+      if (!isWechatDevtools()) {
+        try {
+          uni.removeStorageSync(API_BASE_URL_STORAGE_KEY)
+        } catch {}
+        return DEFAULT_MP_WEIXIN_API_BASE_URL
+      }
+      // #endif
       const normalized = normalizeApiBaseUrl(customBaseUrl)
       if (normalized !== customBaseUrl) {
         uni.setStorageSync(API_BASE_URL_STORAGE_KEY, normalized)
@@ -156,11 +164,18 @@ async function executeUpload(options) {
       ...options,
       timeout: options.timeout || DEFAULT_TIMEOUT,
       success: (res) => {
-        const response = {
-          statusCode: res.statusCode,
-          data: typeof res.data === 'string' ? JSON.parse(res.data || '{}') : (res.data || {})
+        try {
+          const data =
+            typeof res.data === 'string' ? JSON.parse(res.data || '{}') : (res.data || {})
+          resolve({
+            statusCode: res.statusCode,
+            data
+          })
+        } catch (error) {
+          const parseError = new Error('上传响应格式异常，请稍后重试')
+          parseError.response = { statusCode: res.statusCode, data: res.data }
+          reject(parseError)
         }
-        resolve(response)
       },
       fail: (error) => reject(toFriendlyError(error))
     })
