@@ -162,7 +162,7 @@ export function normalizeSubscriptions(list, today = new Date()) {
 
 export function formatShortDate(dateString) {
   const date = parseDate(dateString)
-  return `${pad(date.getMonth() + 1)}/${pad(date.getDate())}`
+  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())}`
 }
 
 export function formatFullDate(dateString) {
