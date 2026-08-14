@@ -105,6 +105,26 @@
             @click="addCustomCategory"
           >＋ 新建</view>
         </view>
+        <view class="manage-cat-entry" @click="openSheet('manage-categories')">
+          <text class="manage-cat-entry-text">管理自定义分类（{{ customCategories.length }}/{{ MAX_CUSTOM_CATEGORIES }}）</text>
+          <view class="manage-cat-entry-arrow"></view>
+        </view>
+      </template>
+
+      <template v-else-if="sheetState.type === 'manage-categories'">
+        <view class="manage-cat-tip">自定义分类最多 {{ MAX_CUSTOM_CATEGORIES }} 个，已有 {{ customCategories.length }} 个</view>
+        <view v-if="customCategories.length === 0" class="sheet-empty">
+          <text class="sheet-empty-text">还没有自定义分类，可返回筛选页点「＋ 新建」添加</text>
+        </view>
+        <view v-else class="manage-cat-list">
+          <view v-for="cat in customCategories" :key="cat" class="manage-cat-item">
+            <text class="manage-cat-name">{{ cat }}</text>
+            <view class="manage-cat-actions">
+              <view class="manage-cat-btn manage-cat-btn-edit" @click="editCustomCategory(cat)">修改</view>
+              <view class="manage-cat-btn manage-cat-btn-del" @click="removeCustomCategory(cat)">删除</view>
+            </view>
+          </view>
+        </view>
       </template>
 
       <template v-else-if="sheetState.type === 'detail' && currentSubscription">
@@ -570,6 +590,7 @@ export default {
     sheetTitle() {
       const titleMap = {
         filter: '筛选',
+        'manage-categories': '管理自定义分类',
         detail: this.currentSubscription?.name || '详情',
         'confirm-delete': '确认删除',
         'batch-delete': '批量删除',
@@ -649,6 +670,9 @@ export default {
           { key: 'clear-filter', text: '清除筛选', type: 'secondary' },
           { key: 'done', text: '完成', type: 'primary' }
         ]
+      }
+      if (t === 'manage-categories') {
+        return [{ key: 'close', text: '关闭', type: 'secondary' }]
       }
       if (t === 'detail') {
         return [
@@ -961,8 +985,11 @@ export default {
             this.removeCustomCategory(category)
           }
         },
-        fail: () => {
-          // 用户取消或非微信环境，忽略
+        fail: (error) => {
+          // 用户取消（cancel）或环境不支持时静默；其余情况留日志便于排查
+          if (error && error.errMsg && !/cancel/i.test(error.errMsg)) {
+            console.warn('[Subease] 分类操作菜单打开失败', error)
+          }
         }
       })
     },
@@ -1004,7 +1031,7 @@ export default {
       if (!this.customCategoryNames.has(category)) return
       uni.showModal({
         title: '删除分类',
-        content: `确定删除分类「${category}」？已有订阅不受影响。`,
+        content: `确定删除分类「${category}」？已有订阅不受影响；若订阅中仍使用该分类，它会在分类列表中保留显示。`,
         confirmColor: '#FF3B30',
         success: (res) => {
           if (!res.confirm) return
@@ -1819,6 +1846,87 @@ export default {
   background: transparent;
   color: var(--accent);
   font-weight: 600;
+}
+
+.manage-cat-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 20rpx;
+  padding: 22rpx 24rpx;
+  border-radius: var(--radius-control);
+  background: var(--bg-accent);
+}
+
+.manage-cat-entry-text {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.manage-cat-entry-arrow {
+  width: 16rpx;
+  height: 16rpx;
+  border-top: 3rpx solid var(--accent);
+  border-right: 3rpx solid var(--accent);
+  transform: rotate(45deg);
+}
+
+.manage-cat-tip {
+  margin-bottom: 20rpx;
+  font-size: 24rpx;
+  color: var(--text-tertiary);
+}
+
+.manage-cat-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.manage-cat-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24rpx 8rpx;
+  border-bottom: 1px solid var(--separator);
+}
+
+.manage-cat-item:last-child {
+  border-bottom: none;
+}
+
+.manage-cat-name {
+  font-size: 30rpx;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.manage-cat-actions {
+  display: flex;
+  align-items: center;
+}
+
+.manage-cat-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 104rpx;
+  height: 60rpx;
+  margin-left: 16rpx;
+  padding: 0 24rpx;
+  border-radius: var(--radius-control);
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.manage-cat-btn-edit {
+  background: var(--bg-accent);
+  color: var(--accent);
+}
+
+.manage-cat-btn-del {
+  background: var(--danger-light);
+  color: var(--danger);
 }
 
 .detail-price-row {
