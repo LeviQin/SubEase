@@ -83,15 +83,17 @@
       @footer-action="onFooterAction"
     >
       <template v-if="sheetState.type === 'filter'">
-        <view class="sheet-section-label">分类</view>
+        <view class="sheet-section-label">分类（带「自」标记的为自定义分类，可长按管理）</view>
         <view class="chip-group">
           <view
             v-for="category in categoryOptions"
             :key="category"
-            :class="['filter-chip', filterCategory === category ? 'is-active' : '']"
+            :class="['filter-chip', filterCategory === category ? 'is-active' : '', customCategoryNames.has(category) ? 'is-custom' : '']"
             @click="setFilterCategory(category)"
+            @longpress="handleFilterChipLongPress(category)"
           >
             {{ category }}
+            <text v-if="customCategoryNames.has(category)" class="filter-chip-badge">自</text>
           </view>
           <view
             v-if="customCategories.length < MAX_CUSTOM_CATEGORIES"
@@ -103,8 +105,9 @@
 
       <template v-else-if="sheetState.type === 'manage-categories'">
         <view class="manage-cat-tip">自定义分类最多 {{ MAX_CUSTOM_CATEGORIES }} 个，已有 {{ customCategories.length }} 个</view>
-        <view v-if="customCategories.length === 0" class="sheet-empty">
-          <text class="sheet-empty-text">还没有自定义分类，可返回筛选页点「＋ 新建」添加</text>
+        <view v-if="customCategories.length === 0" class="manage-cat-empty">
+          <text class="manage-cat-empty-title">暂无自定义分类</text>
+          <text class="manage-cat-empty-desc">注意：分类列表里带「自」标记的才是自定义分类；订阅中使用的分类会自动显示但不会计入，需通过「＋ 新建」添加后才能在这里管理。</text>
         </view>
         <view v-else class="manage-cat-list">
           <view v-for="cat in customCategories" :key="cat" class="manage-cat-item">
@@ -928,11 +931,11 @@ export default {
         payload: null
       }
     },
-    // 弹层关闭：若从「添加订阅」进入分类管理面板，关闭后返回表单
+    // 弹层关闭：若从「添加订阅 / 筛选」进入分类管理面板，关闭后返回来源
     handleSheetClose() {
       const payload = this.sheetState.payload || {}
-      if (this.sheetState.type === 'manage-categories' && payload.returnTo === 'form') {
-        this.openSheet('form', payload.formPayload || null)
+      if (this.sheetState.type === 'manage-categories' && payload.returnTo) {
+        this.openSheet(payload.returnTo, payload.formPayload || null)
         return
       }
       this.closeSheet()
@@ -971,6 +974,11 @@ export default {
           if (res.confirm) doAdd(res.content)
         }
       })
+    },
+    // 筛选弹窗长按自定义分类：打开管理面板，返回时回到筛选弹窗
+    handleFilterChipLongPress(category) {
+      if (!this.customCategoryNames.has(category)) return
+      this.openSheet('manage-categories', { returnTo: 'filter' })
     },
     editCustomCategory(category) {
       if (!this.customCategoryNames.has(category)) return
@@ -1626,8 +1634,10 @@ export default {
       else if (key === 'save') this.saveForm()
       else if (key === 'submit-feedback') this.submitFeedbackForm()
       else if (key === 'close') {
-        if (t === 'manage-categories' && this.sheetState.payload?.returnTo === 'form') {
-          this.openSheet('form')
+        const returnTo =
+          t === 'manage-categories' ? this.sheetState.payload?.returnTo : null
+        if (returnTo) {
+          this.openSheet(returnTo)
         } else {
           this.closeSheet()
         }
@@ -1787,6 +1797,27 @@ export default {
   box-shadow: var(--shadow-xs);
 }
 
+.filter-chip-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30rpx;
+  height: 30rpx;
+  margin-left: 8rpx;
+  padding: 0 6rpx;
+  border-radius: var(--radius-full);
+  font-size: 18rpx;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent);
+  background: var(--bg-accent);
+}
+
+.filter-chip.is-active .filter-chip-badge {
+  color: var(--accent);
+  background: rgba(255, 255, 255, 0.9);
+}
+
 .filter-chip-add {
   border: 1px dashed var(--separator-strong);
   background: transparent;
@@ -1797,6 +1828,27 @@ export default {
 .manage-cat-tip {
   margin-bottom: 20rpx;
   font-size: 24rpx;
+  color: var(--text-tertiary);
+}
+
+.manage-cat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 60rpx 40rpx;
+  text-align: center;
+}
+
+.manage-cat-empty-title {
+  margin-bottom: 16rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.manage-cat-empty-desc {
+  font-size: 24rpx;
+  line-height: 1.7;
   color: var(--text-tertiary);
 }
 
