@@ -83,17 +83,16 @@
       @footer-action="onFooterAction"
     >
       <template v-if="sheetState.type === 'filter'">
-        <view class="sheet-section-label">分类（带「自」标记的为自定义分类，可长按管理）</view>
+        <view class="sheet-section-label">分类</view>
         <view class="chip-group">
           <view
             v-for="category in categoryOptions"
             :key="category"
-            :class="['filter-chip', filterCategory === category ? 'is-active' : '', customCategoryNames.has(category) ? 'is-custom' : '']"
+            :class="['filter-chip', filterCategory === category ? 'is-active' : '']"
             @click="setFilterCategory(category)"
             @longpress="handleFilterChipLongPress(category)"
           >
             {{ category }}
-            <text v-if="customCategoryNames.has(category)" class="filter-chip-badge">自</text>
           </view>
           <view
             v-if="effectiveCustomCategories.length < MAX_CUSTOM_CATEGORIES"
@@ -1870,27 +1869,6 @@ export default {
   color: var(--text-inverse);
   font-weight: 600;
   box-shadow: var(--shadow-xs);
-}
-
-.filter-chip-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 30rpx;
-  height: 30rpx;
-  margin-left: 8rpx;
-  padding: 0 6rpx;
-  border-radius: var(--radius-full);
-  font-size: 18rpx;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--accent);
-  background: var(--bg-accent);
-}
-
-.filter-chip.is-active .filter-chip-badge {
-  color: var(--accent);
-  background: rgba(255, 255, 255, 0.9);
 }
 
 .filter-chip-add {

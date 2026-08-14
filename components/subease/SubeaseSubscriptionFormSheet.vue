@@ -49,12 +49,11 @@
         <view
           v-for="item in categoryOptions"
           :key="item"
-          :class="['option-chip', form.category === item ? 'is-active' : '', isCustomCategory(item) ? 'is-custom' : '']"
+          :class="['option-chip', form.category === item ? 'is-active' : '']"
           @click="$emit('update-field', { field: 'category', value: item })"
           @longpress="onChipLongPress(item)"
         >
           {{ item }}
-          <text v-if="isCustomCategory(item)" class="option-chip-badge">自</text>
         </view>
         <view v-if="!hideAddCategory" class="option-chip option-chip-add" @click="$emit('add-category')">＋ 自定义</view>
       </view>
@@ -275,27 +274,6 @@ export default {
   color: var(--text-inverse);
   font-weight: 600;
   box-shadow: var(--shadow-xs);
-}
-
-.option-chip-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 30rpx;
-  height: 30rpx;
-  margin-left: 8rpx;
-  padding: 0 6rpx;
-  border-radius: var(--radius-full);
-  font-size: 18rpx;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--accent);
-  background: var(--bg-accent);
-}
-
-.option-chip.is-active .option-chip-badge {
-  color: var(--accent);
-  background: rgba(255, 255, 255, 0.9);
 }
 
 .form-manage-cat {
