@@ -379,6 +379,7 @@ import {
   getWeekExpense,
   normalizeSubscriptions,
   parseSubscriptionsCsv,
+  applyCategoryChangeToSubscriptions,
   renameCustomCategory,
   validateCustomCategory
 } from '@/utils/subease/helpers'
@@ -401,6 +402,7 @@ import {
   updateSubscription,
   deleteSubscription,
   batchDeleteSubscriptions,
+  batchUpdateCategory,
   requestExport
 } from '@/api/subease/subscription'
 import { getFeedbackList, markFeedbackRead as markFeedbackReadApi, submitFeedback } from '@/api/subease/feedback'
@@ -988,7 +990,7 @@ export default {
       this.showToast('仅微信小程序支持自定义分类')
       return
       // #endif
-      const doRename = (name) => {
+      const doRename = async (name) => {
         // 排除自身：改回原名或改到另一个名字时，重名校验只针对「其他分类」
         const others = this.categoryOptions.filter((item) => item !== category)
         const result = validateCustomCategory(name, others)
@@ -997,6 +999,19 @@ export default {
           return
         }
         const renamed = result.value
+        // 联动：使用该分类的订阅同步改为新分类名，避免旧名残留
+        const affected = this.subscriptions.filter((item) => item.category === category)
+        if (affected.length > 0) {
+          try {
+            await batchUpdateCategory(category, renamed)
+          } catch (error) {
+            console.error('[Subease] 同步订阅分类失败', error)
+            this.showToast('分类同步失败，请重试')
+            return
+          }
+          this.subscriptions = applyCategoryChangeToSubscriptions(this.subscriptions, category, renamed)
+          saveSubscriptionsCache(this.subscriptions)
+        }
         this.customCategories = renameCustomCategory(this.customCategories, category, renamed)
         saveCustomCategories(this.customCategories)
         // 正在筛选/编辑该分类时同步更新引用
@@ -1018,12 +1033,29 @@ export default {
     },
     removeCustomCategory(category) {
       if (!this.customCategoryNames.has(category)) return
+      const affectedCount = this.subscriptions.filter((item) => item.category === category).length
+      const tip =
+        affectedCount > 0
+          ? `确定删除分类「${category}」？有 ${affectedCount} 个订阅正在使用该分类，将自动改为「其他」。`
+          : `确定删除分类「${category}」？`
       uni.showModal({
         title: '删除分类',
-        content: `确定删除分类「${category}」？已有订阅不受影响；若订阅中仍使用该分类，它会在分类列表中保留显示。`,
+        content: tip,
         confirmColor: '#FF3B30',
-        success: (res) => {
+        success: async (res) => {
           if (!res.confirm) return
+          // 联动：使用该分类的订阅批量改为「其他」，同步失败则不删分类，保证数据一致
+          if (affectedCount > 0) {
+            try {
+              await batchUpdateCategory(category, '其他')
+            } catch (error) {
+              console.error('[Subease] 同步订阅分类失败', error)
+              this.showToast('分类同步失败，请重试')
+              return
+            }
+            this.subscriptions = applyCategoryChangeToSubscriptions(this.subscriptions, category, '其他')
+            saveSubscriptionsCache(this.subscriptions)
+          }
           this.customCategories = this.customCategories.filter((item) => item !== category)
           saveCustomCategories(this.customCategories)
           if (this.filterCategory === category) this.filterCategory = ''

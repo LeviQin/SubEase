@@ -571,6 +571,13 @@ export function renameCustomCategory(categories, oldName, newName) {
   return categories.map((item) => (item === oldName ? newName : item))
 }
 
+// 分类变更后同步订阅列表（纯函数）：删除分类 → 改为「其他」；改名 → 改为新名
+export function applyCategoryChangeToSubscriptions(subscriptions, from, to) {
+  return (subscriptions || []).map((item) =>
+    item && item.category === from ? { ...item, category: to } : item
+  )
+}
+
 // ═══ 批量导入：CSV 文本解析（纯函数）═══
 // 支持两种格式：
 // 1) 导出格式（含表头，9 列）：名称,金额,货币,分类,周期,下次付款日,支付方式,自动续费,备注

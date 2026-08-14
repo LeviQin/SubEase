@@ -38,6 +38,15 @@ export function batchDeleteSubscriptions(ids) {
   })
 }
 
+// 批量更新订阅分类：自定义分类删除（→ 其他）/ 改名（→ 新名）时联动
+export function batchUpdateCategory(from, to) {
+  return request({
+    url: '/subscription/batch-category',
+    method: 'PUT',
+    data: { from, to }
+  })
+}
+
 export function requestExport() {
   return request({
     url: '/subscription/export-xlsx',
