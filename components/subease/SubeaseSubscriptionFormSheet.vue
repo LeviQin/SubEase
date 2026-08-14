@@ -49,17 +49,16 @@
         <view
           v-for="item in categoryOptions"
           :key="item"
-          :class="['option-chip', form.category === item ? 'is-active' : '', isCustomCategory(item) ? 'is-custom' : '']"
+          :class="['option-chip', form.category === item ? 'is-active' : '']"
           @click="$emit('update-field', { field: 'category', value: item })"
         >
-          <text class="option-chip-text">{{ item }}</text>
-          <view
-            v-if="isCustomCategory(item)"
-            class="option-chip-more"
-            @click.stop="$emit('manage-category', item)"
-          >···</view>
+          {{ item }}
         </view>
         <view v-if="!hideAddCategory" class="option-chip option-chip-add" @click="$emit('add-category')">＋ 自定义</view>
+      </view>
+      <view class="form-manage-cat" @click="$emit('manage-categories')">
+        <text class="form-manage-cat-text">管理自定义分类（{{ customCategories.length }}/{{ MAX_CUSTOM_CATEGORIES }}）</text>
+        <view class="form-manage-cat-arrow"></view>
       </view>
     </view>
 
@@ -125,6 +124,8 @@
 </template>
 
 <script>
+import { MAX_CUSTOM_CATEGORIES } from '@/utils/subease/constants'
+
 export default {
   name: 'SubeaseSubscriptionFormSheet',
   props: {
@@ -149,18 +150,13 @@ export default {
       type: Boolean,
       default: false
     },
-    // 自定义分类列表（用于区分默认/自定义分类，自定义项显示「···」管理按钮）
+    // 自定义分类列表（用于展示管理入口的数量 x/10）
     customCategories: {
       type: Array,
       default: () => []
     }
   },
-  emits: ['update-field', 'currency-change', 'add-category', 'manage-category', 'open-preset'],
-  methods: {
-    isCustomCategory(item) {
-      return this.customCategories.includes(item)
-    }
-  }
+  emits: ['update-field', 'currency-change', 'add-category', 'manage-categories', 'open-preset']
 }
 </script>
 
@@ -245,8 +241,6 @@ export default {
 }
 
 .option-chip {
-  display: inline-flex;
-  align-items: center;
   padding: 18rpx 28rpx;
   border-radius: var(--radius-pill);
   background: var(--bg-muted);
@@ -262,43 +256,28 @@ export default {
   box-shadow: var(--shadow-xs);
 }
 
-.option-chip-text {
-  line-height: 1;
-}
-
-.option-chip-more {
+.form-manage-cat {
   display: flex;
   align-items: center;
-  justify-content: center;
-  min-width: 44rpx;
-  height: 44rpx;
-  margin: -8rpx -10rpx -8rpx 10rpx;
-  padding: 0 8rpx;
-  border-radius: var(--radius-full);
-  font-size: 22rpx;
-  font-weight: 700;
-  letter-spacing: 2rpx;
-  color: var(--text-tertiary);
-  background: rgba(0, 0, 0, 0.06);
+  justify-content: space-between;
+  margin-top: 16rpx;
+  padding: 20rpx 24rpx;
+  border-radius: var(--radius-control);
+  background: var(--bg-accent);
 }
 
-.is-active .option-chip-more {
-  color: rgba(255, 255, 255, 0.85);
-  background: rgba(255, 255, 255, 0.18);
+.form-manage-cat-text {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--accent);
 }
 
-.option-chip-more:active {
-  background: rgba(0, 0, 0, 0.14);
-}
-
-@media (prefers-color-scheme: dark) {
-  .option-chip-more {
-    background: rgba(255, 255, 255, 0.14);
-  }
-
-  .option-chip-more:active {
-    background: rgba(255, 255, 255, 0.22);
-  }
+.form-manage-cat-arrow {
+  width: 16rpx;
+  height: 16rpx;
+  border-top: 3rpx solid var(--accent);
+  border-right: 3rpx solid var(--accent);
+  transform: rotate(45deg);
 }
 
 .option-chip-add {

@@ -79,35 +79,25 @@
       :visible="sheetState.visible"
       :title="sheetTitle"
       :footer-buttons="sheetFooterButtons"
-      @close="closeSheet"
+      @close="handleSheetClose"
       @footer-action="onFooterAction"
     >
       <template v-if="sheetState.type === 'filter'">
-        <view class="sheet-section-label">分类（自定义分类点「···」可修改/删除）</view>
+        <view class="sheet-section-label">分类</view>
         <view class="chip-group">
           <view
             v-for="category in categoryOptions"
             :key="category"
-            :class="['filter-chip', filterCategory === category ? 'is-active' : '', customCategoryNames.has(category) ? 'is-custom' : '']"
+            :class="['filter-chip', filterCategory === category ? 'is-active' : '']"
             @click="setFilterCategory(category)"
-            @longpress="handleCategoryLongPress(category)"
           >
-            <text class="filter-chip-text">{{ category }}</text>
-            <view
-              v-if="customCategoryNames.has(category)"
-              class="filter-chip-more"
-              @click.stop="handleCategoryLongPress(category)"
-            >···</view>
+            {{ category }}
           </view>
           <view
             v-if="customCategories.length < MAX_CUSTOM_CATEGORIES"
             class="filter-chip filter-chip-add"
             @click="addCustomCategory"
           >＋ 新建</view>
-        </view>
-        <view class="manage-cat-entry" @click="openSheet('manage-categories')">
-          <text class="manage-cat-entry-text">管理自定义分类（{{ customCategories.length }}/{{ MAX_CUSTOM_CATEGORIES }}）</text>
-          <view class="manage-cat-entry-arrow"></view>
         </view>
       </template>
 
@@ -345,7 +335,7 @@
           @update-field="onFormFieldUpdate"
           @currency-change="onCurrencyChange"
           @add-category="addCustomCategory"
-          @manage-category="handleCategoryLongPress"
+          @manage-categories="openSheet('manage-categories', { returnTo: 'form' })"
           @open-preset="openPresetSheet"
         />
       </template>
@@ -938,6 +928,15 @@ export default {
         payload: null
       }
     },
+    // 弹层关闭：若从「添加订阅」进入分类管理面板，关闭后返回表单
+    handleSheetClose() {
+      const payload = this.sheetState.payload || {}
+      if (this.sheetState.type === 'manage-categories' && payload.returnTo === 'form') {
+        this.openSheet('form', payload.formPayload || null)
+        return
+      }
+      this.closeSheet()
+    },
     openFilterSheet() {
       this.openSheet('filter')
     },
@@ -970,26 +969,6 @@ export default {
         placeholderText: '例如：云存储',
         success: (res) => {
           if (res.confirm) doAdd(res.content)
-        }
-      })
-    },
-    // 长按自定义分类：弹出「修改名称 / 删除分类」操作
-    handleCategoryLongPress(category) {
-      if (!this.customCategoryNames.has(category)) return
-      uni.showActionSheet({
-        itemList: ['修改名称', '删除分类'],
-        success: (res) => {
-          if (res.tapIndex === 0) {
-            this.editCustomCategory(category)
-          } else if (res.tapIndex === 1) {
-            this.removeCustomCategory(category)
-          }
-        },
-        fail: (error) => {
-          // 用户取消（cancel）或环境不支持时静默；其余情况留日志便于排查
-          if (error && error.errMsg && !/cancel/i.test(error.errMsg)) {
-            console.warn('[Subease] 分类操作菜单打开失败', error)
-          }
         }
       })
     },
@@ -1646,7 +1625,13 @@ export default {
       else if (key === 'submit-wechat-profile' && t === 'profile-sync') this.syncWeChatProfile()
       else if (key === 'save') this.saveForm()
       else if (key === 'submit-feedback') this.submitFeedbackForm()
-      else if (key === 'close') this.closeSheet()
+      else if (key === 'close') {
+        if (t === 'manage-categories' && this.sheetState.payload?.returnTo === 'form') {
+          this.openSheet('form')
+        } else {
+          this.closeSheet()
+        }
+      }
       else if (key === 'save-export') this.exportXlsxFile()
       else if (key === 'import-confirm' && t === 'import') this.confirmImport()
     },
@@ -1802,74 +1787,11 @@ export default {
   box-shadow: var(--shadow-xs);
 }
 
-.filter-chip-text {
-  line-height: 1;
-}
-
-.filter-chip-more {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 44rpx;
-  height: 44rpx;
-  margin: -8rpx -10rpx -8rpx 10rpx;
-  padding: 0 8rpx;
-  border-radius: var(--radius-full);
-  font-size: 22rpx;
-  font-weight: 700;
-  letter-spacing: 2rpx;
-  color: var(--text-tertiary);
-  background: rgba(0, 0, 0, 0.06);
-}
-
-.is-active .filter-chip-more {
-  color: rgba(255, 255, 255, 0.85);
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.filter-chip-more:active {
-  background: rgba(0, 0, 0, 0.14);
-}
-
-@media (prefers-color-scheme: dark) {
-  .filter-chip-more {
-    background: rgba(255, 255, 255, 0.14);
-  }
-
-  .filter-chip-more:active {
-    background: rgba(255, 255, 255, 0.22);
-  }
-}
-
 .filter-chip-add {
   border: 1px dashed var(--separator-strong);
   background: transparent;
   color: var(--accent);
   font-weight: 600;
-}
-
-.manage-cat-entry {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 20rpx;
-  padding: 22rpx 24rpx;
-  border-radius: var(--radius-control);
-  background: var(--bg-accent);
-}
-
-.manage-cat-entry-text {
-  font-size: 26rpx;
-  font-weight: 600;
-  color: var(--accent);
-}
-
-.manage-cat-entry-arrow {
-  width: 16rpx;
-  height: 16rpx;
-  border-top: 3rpx solid var(--accent);
-  border-right: 3rpx solid var(--accent);
-  transform: rotate(45deg);
 }
 
 .manage-cat-tip {
