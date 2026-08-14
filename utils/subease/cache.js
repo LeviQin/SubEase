@@ -59,6 +59,16 @@ export function loadCustomCategories() {
   return list.filter((item) => typeof item === 'string' && item.trim())
 }
 
+// 读取 storage 原始值（用于管理面板「本地存储诊断」，帮助定位数据是否真实存在）
+export function loadCustomCategoriesRaw() {
+  try {
+    const raw = uni.getStorageSync(CUSTOM_CATEGORIES_KEY)
+    return raw === undefined || raw === null || raw === '' ? null : raw
+  } catch {
+    return null
+  }
+}
+
 export function saveCustomCategories(list) {
   try {
     // 与前端上限保持一致，防御性截断，避免脏数据超限

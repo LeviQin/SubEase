@@ -561,7 +561,7 @@ export function validateCustomCategory(name, existingCategories = []) {
   const trimmed = String(name || '').trim()
   if (!trimmed) return { ok: false, message: '' }
   if (trimmed.length > 6) return { ok: false, message: '分类名称最多 6 个字' }
-  if (existingCategories.includes(trimmed)) return { ok: false, message: '该分类已存在' }
+  if (existingCategories.includes(trimmed)) return { ok: false, message: '该分类已存在（默认/订阅中已使用）' }
   return { ok: true, value: trimmed }
 }
 

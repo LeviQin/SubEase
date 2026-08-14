@@ -107,7 +107,12 @@
         <view class="manage-cat-tip">自定义分类最多 {{ MAX_CUSTOM_CATEGORIES }} 个，已有 {{ customCategories.length }} 个</view>
         <view v-if="customCategories.length === 0" class="manage-cat-empty">
           <text class="manage-cat-empty-title">暂无自定义分类</text>
-          <text class="manage-cat-empty-desc">注意：分类列表里带「自」标记的才是自定义分类；订阅中使用的分类会自动显示但不会计入，需通过「＋ 新建」添加后才能在这里管理。</text>
+          <text class="manage-cat-empty-desc">分类列表里带「自」标记的才是自定义分类；订阅中使用的分类会自动显示但不会计入，需通过「＋ 新建」添加后才能在这里管理。</text>
+          <view class="manage-cat-debug">
+            <text class="manage-cat-debug-label">本地存储诊断：</text>
+            <text class="manage-cat-debug-value">{{ rawCustomCategoriesDebug }}</text>
+          </view>
+          <view class="manage-cat-empty-btn" @click="reloadCustomCategories">重新加载本地数据</view>
         </view>
         <view v-else class="manage-cat-list">
           <view v-for="cat in customCategories" :key="cat" class="manage-cat-item">
@@ -385,6 +390,7 @@ import {
 } from '@/utils/subease/helpers'
 import {
   loadCustomCategories,
+  loadCustomCategoriesRaw,
   loadRatesCache,
   loadSubscriptionsCache,
   saveCustomCategories,
@@ -565,6 +571,15 @@ export default {
     },
     customCategoryNames() {
       return new Set(this.customCategories)
+    },
+    // 管理面板空状态诊断：直接读取 storage 原始值，定位「数据不存在」还是「读取失败」
+    rawCustomCategoriesDebug() {
+      try {
+        const raw = loadCustomCategoriesRaw()
+        return raw === null ? '（空）' : JSON.stringify(raw)
+      } catch (error) {
+        return '（读取失败）'
+      }
     },
     presetList() {
       const keyword = (this.presetKeyword || '').trim().toLowerCase()
@@ -978,6 +993,14 @@ export default {
           if (res.confirm) doAdd(res.content)
         }
       })
+    },
+    // 管理面板空状态：重新从本地 storage 加载自定义分类
+    reloadCustomCategories() {
+      const loaded = loadCustomCategories()
+      this.customCategories = loaded
+      this.showToast(
+        loaded.length ? `已加载 ${loaded.length} 个自定义分类` : '本地没有自定义分类数据'
+      )
     },
     // 筛选弹窗长按自定义分类：打开管理面板，返回时回到筛选弹窗
     handleFilterChipLongPress(category) {
@@ -1884,6 +1907,47 @@ export default {
   font-size: 24rpx;
   line-height: 1.7;
   color: var(--text-tertiary);
+}
+
+.manage-cat-debug {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  margin-top: 24rpx;
+  padding: 16rpx 20rpx;
+  border-radius: var(--radius-control);
+  background: var(--bg-muted);
+  text-align: left;
+}
+
+.manage-cat-debug-label {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.manage-cat-debug-value {
+  flex: 1;
+  margin-left: 12rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  word-break: break-all;
+  color: var(--text-tertiary);
+}
+
+.manage-cat-empty-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 72rpx;
+  margin-top: 28rpx;
+  padding: 0 40rpx;
+  border-radius: var(--radius-control);
+  background: var(--bg-accent);
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--accent);
 }
 
 .manage-cat-list {
