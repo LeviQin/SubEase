@@ -427,6 +427,8 @@ export default {
       ...createInitialState(),
       subscriptions: [],
       customCategories: [],
+      // 暴露给模板使用（模块级 import 不会自动注入实例）
+      MAX_CUSTOM_CATEGORIES,
       currencyOptions: CURRENCY_OPTIONS,
       presetKeyword: '',
       remindDaysOptions: [1, 3, 7, 15, 30],

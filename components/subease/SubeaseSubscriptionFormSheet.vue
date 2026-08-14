@@ -159,6 +159,12 @@ export default {
     }
   },
   emits: ['update-field', 'currency-change', 'add-category', 'manage-categories', 'open-preset'],
+  data() {
+    return {
+      // 暴露给模板使用（模块级 import 不会自动注入实例）
+      MAX_CUSTOM_CATEGORIES
+    }
+  },
   methods: {
     isCustomCategory(item) {
       return this.customCategories.includes(item)
