@@ -1310,6 +1310,10 @@ export default {
         this.showToast('请输入有效金额')
         return
       }
+      if (payload.paidCycles < 1 || payload.paidCycles > 120) {
+        this.showToast('预付周期数需为 1~120 之间的整数')
+        return
+      }
       try {
         if (payload.id && this.subscriptions.find((item) => item.id === payload.id)) {
           const updated = await updateSubscription(payload.id, payload)
