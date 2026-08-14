@@ -516,6 +516,7 @@ export function createSubscriptionPayload(formState, currentFilter) {
     cycle: formState.cycle || '月付',
     category: formState.category || currentFilter || '其他',
     nextDate: formState.nextDate,
+    paidCycles: Math.max(1, Math.floor(Number(formState.paidCycles) || 1)),
     autoRenew: Boolean(formState.autoRenew),
     remindDays: Number(formState.remindDays || 3),
     method: formState.method || '',

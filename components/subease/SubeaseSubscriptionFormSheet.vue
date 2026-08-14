@@ -78,6 +78,19 @@
     </view>
 
     <view class="form-field">
+      <text class="form-label">预付周期数</text>
+      <picker
+        mode="selector"
+        :range="paidCycleLabels"
+        :value="paidCycleIndex"
+        @change="$emit('update-field', { field: 'paidCycles', value: paidCycleOptions[$event.detail.value] })"
+      >
+        <view class="form-input picker-input">{{ paidCycleLabel }}</view>
+      </picker>
+      <text class="form-tip">一次买几个月/几年就填几期；下次付款日请填预付到期日</text>
+    </view>
+
+    <view class="form-field">
       <text class="form-label">下次付款日</text>
       <picker
         mode="date"
@@ -161,7 +174,23 @@ export default {
   data() {
     return {
       // 暴露给模板使用（模块级 import 不会自动注入实例）
-      MAX_CUSTOM_CATEGORIES
+      MAX_CUSTOM_CATEGORIES,
+      // 预付周期数选项（一次买几个月/几年）
+      paidCycleOptions: [1, 2, 3, 4, 6, 12, 24, 36, 60]
+    }
+  },
+  computed: {
+    paidCycleIndex() {
+      const idx = this.paidCycleOptions.indexOf(Number(this.form.paidCycles) || 1)
+      return idx >= 0 ? idx : 0
+    },
+    paidCycleLabels() {
+      return this.paidCycleOptions.map((n) => `${n} 期`)
+    },
+    paidCycleLabel() {
+      const n = Number(this.form.paidCycles) || 1
+      const period = n > 1 ? '期' : '期（默认）'
+      return `${n} ${period}`
     }
   },
   methods: {
@@ -317,6 +346,14 @@ export default {
   font-size: 28rpx;
   color: var(--text-primary);
   box-sizing: border-box;
+}
+
+.form-tip {
+  display: block;
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: var(--text-tertiary);
 }
 
 .form-input:focus {

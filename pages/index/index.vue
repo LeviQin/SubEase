@@ -139,6 +139,10 @@
             <text class="detail-key">下次付款</text>
             <text class="detail-value">{{ formatShortDate(currentSubscription.displayDate || currentSubscription.nextDate) }}</text>
           </view>
+          <view v-if="(currentSubscription.paidCycles || 1) > 1" class="detail-row">
+            <text class="detail-key">已预付</text>
+            <text class="detail-value">预付 {{ currentSubscription.paidCycles }} 个周期，付至 {{ formatShortDate(currentSubscription.nextDate) }}</text>
+          </view>
           <view class="detail-row">
             <text class="detail-key">支付方式</text>
             <text class="detail-value">{{ currentSubscription.method || '未设置' }}</text>
