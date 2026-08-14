@@ -16,6 +16,7 @@ export function createEmptyFormState() {
     cycle: '月付',
     category: '',
     nextDate: todayString(),
+    lastPaidDate: '',
     paidCycles: 1,
     remindDays: 3,
     method: '',

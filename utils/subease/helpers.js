@@ -99,6 +99,29 @@ export function rollNextDate(dateString, cycle, today = new Date()) {
   return formatDateString(date)
 }
 
+// 由「上次扣款日 → 下次付款日」反推预付周期数（纯函数）
+// 先按月数差估算期数，再用「第 N 个周期的实际日期」校验是否已覆盖到下次付款日，
+// 正确处理月末溢出（1-31 → 3-31 为 2 期）与差几天不满整周期的情况。
+// 例：上次扣款 2026-08-14、下次付款 2027-02-14、月付 → 6 期；年付买 3 年 → 3 期。
+export function calcPaidCycles(lastPaidDate, nextDate, cycle) {
+  const months = CYCLE_MONTHS_MAP[cycle] || 1
+  const start = parseDate(lastPaidDate)
+  const target = parseDate(nextDate)
+  if (!start || !target || Number.isNaN(start.getTime()) || Number.isNaN(target.getTime())) {
+    return 1
+  }
+  if (target <= start) return 1
+
+  const monthDiff =
+    (target.getFullYear() * 12 + target.getMonth()) -
+    (start.getFullYear() * 12 + start.getMonth())
+  let count = Math.floor(monthDiff / months)
+  // 校验：count 个周期后的实际日期（月末钳制）是否已到达/超过下次付款日
+  const base = addMonthsClamped(start, count * months)
+  if (base > target) count -= 1
+  return Math.max(1, count)
+}
+
 /**
  * 归一化订阅列表：为每条记录计算展示用日期与状态，供列表/统计/首页统一消费。
  * - displayDate：展示用下次付款日（自动续费过期则滚动，手动续费保持原值）
@@ -516,6 +539,7 @@ export function createSubscriptionPayload(formState, currentFilter) {
     cycle: formState.cycle || '月付',
     category: formState.category || currentFilter || '其他',
     nextDate: formState.nextDate,
+    lastPaidDate: formState.lastPaidDate || '',
     paidCycles: Math.max(1, Math.floor(Number(formState.paidCycles) || 1)),
     autoRenew: Boolean(formState.autoRenew),
     remindDays: Number(formState.remindDays || 3),

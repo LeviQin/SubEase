@@ -78,6 +78,17 @@
     </view>
 
     <view class="form-field">
+      <text class="form-label">上次扣款日</text>
+      <picker
+        mode="date"
+        :value="form.lastPaidDate"
+        @change="$emit('update-field', { field: 'lastPaidDate', value: $event.detail.value })"
+      >
+        <view class="form-input picker-input">{{ form.lastPaidDate || '选填（填写后自动计算预付期数）' }}</view>
+      </picker>
+    </view>
+
+    <view class="form-field">
       <text class="form-label">预付周期数</text>
       <input
         class="form-input"
@@ -88,7 +99,7 @@
         maxlength="3"
         @input="$emit('update-field', { field: 'paidCycles', value: $event.detail.value })"
       />
-      <text class="form-tip">一次买几个月/几年就填几期（支持任意整数）；下次付款日请填预付到期日</text>
+      <text class="form-tip">{{ paidCycleTip }}</text>
     </view>
 
     <view class="form-field">
@@ -140,6 +151,7 @@
 
 <script>
 import { MAX_CUSTOM_CATEGORIES } from '@/utils/subease/constants'
+import { calcPaidCycles } from '@/utils/subease/helpers'
 
 export default {
   name: 'SubeaseSubscriptionFormSheet',
@@ -178,7 +190,37 @@ export default {
       MAX_CUSTOM_CATEGORIES
     }
   },
+  computed: {
+    // 表单提示：填了上次扣款日时提示自动计算，否则提示手动填写规则
+    paidCycleTip() {
+      if (this.form.lastPaidDate && this.form.nextDate) {
+        return '已根据上次扣款日自动计算，可手动修改'
+      }
+      return '一次买几个月/几年就填几期；填写「上次扣款日」可自动计算'
+    }
+  },
+  watch: {
+    // 上次扣款日 / 下次付款日 / 周期任一变化 → 自动重算预付期数
+    'form.lastPaidDate'() {
+      this.autoCalcPaidCycles()
+    },
+    'form.nextDate'() {
+      this.autoCalcPaidCycles()
+    },
+    'form.cycle'() {
+      this.autoCalcPaidCycles()
+    }
+  },
   methods: {
+    autoCalcPaidCycles() {
+      const last = this.form.lastPaidDate
+      const next = this.form.nextDate
+      if (!last || !next) return
+      const n = calcPaidCycles(last, next, this.form.cycle || '月付')
+      if (n !== Number(this.form.paidCycles)) {
+        this.$emit('update-field', { field: 'paidCycles', value: n })
+      }
+    },
     isCustomCategory(item) {
       return this.customCategories.includes(item)
     },
