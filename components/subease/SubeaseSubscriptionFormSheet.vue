@@ -49,10 +49,15 @@
         <view
           v-for="item in categoryOptions"
           :key="item"
-          :class="['option-chip', form.category === item ? 'is-active' : '']"
+          :class="['option-chip', form.category === item ? 'is-active' : '', isCustomCategory(item) ? 'is-custom' : '']"
           @click="$emit('update-field', { field: 'category', value: item })"
         >
-          {{ item }}
+          <text class="option-chip-text">{{ item }}</text>
+          <view
+            v-if="isCustomCategory(item)"
+            class="option-chip-more"
+            @click.stop="$emit('manage-category', item)"
+          >···</view>
         </view>
         <view v-if="!hideAddCategory" class="option-chip option-chip-add" @click="$emit('add-category')">＋ 自定义</view>
       </view>
@@ -143,9 +148,19 @@ export default {
     hideAddCategory: {
       type: Boolean,
       default: false
+    },
+    // 自定义分类列表（用于区分默认/自定义分类，自定义项显示「···」管理按钮）
+    customCategories: {
+      type: Array,
+      default: () => []
     }
   },
-  emits: ['update-field', 'currency-change', 'add-category', 'open-preset']
+  emits: ['update-field', 'currency-change', 'add-category', 'manage-category', 'open-preset'],
+  methods: {
+    isCustomCategory(item) {
+      return this.customCategories.includes(item)
+    }
+  }
 }
 </script>
 
@@ -230,6 +245,8 @@ export default {
 }
 
 .option-chip {
+  display: inline-flex;
+  align-items: center;
   padding: 18rpx 28rpx;
   border-radius: var(--radius-pill);
   background: var(--bg-muted);
@@ -243,6 +260,45 @@ export default {
   color: var(--text-inverse);
   font-weight: 600;
   box-shadow: var(--shadow-xs);
+}
+
+.option-chip-text {
+  line-height: 1;
+}
+
+.option-chip-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44rpx;
+  height: 44rpx;
+  margin: -8rpx -10rpx -8rpx 10rpx;
+  padding: 0 8rpx;
+  border-radius: var(--radius-full);
+  font-size: 22rpx;
+  font-weight: 700;
+  letter-spacing: 2rpx;
+  color: var(--text-tertiary);
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.is-active .option-chip-more {
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.option-chip-more:active {
+  background: rgba(0, 0, 0, 0.14);
+}
+
+@media (prefers-color-scheme: dark) {
+  .option-chip-more {
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .option-chip-more:active {
+    background: rgba(255, 255, 255, 0.22);
+  }
 }
 
 .option-chip-add {

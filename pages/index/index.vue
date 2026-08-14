@@ -321,9 +321,11 @@
           :currency-options="currencyOptions"
           :currency-index="currencyIndex"
           :hide-add-category="customCategories.length >= MAX_CUSTOM_CATEGORIES"
+          :custom-categories="customCategories"
           @update-field="onFormFieldUpdate"
           @currency-change="onCurrencyChange"
           @add-category="addCustomCategory"
+          @manage-category="handleCategoryLongPress"
           @open-preset="openPresetSheet"
         />
       </template>
