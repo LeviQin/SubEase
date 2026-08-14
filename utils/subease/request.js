@@ -120,11 +120,6 @@ function isUnauthorizedResponse(response) {
   return response.statusCode === 401 || (response.data && response.data.code === 401)
 }
 
-function isUnauthorizedError(error) {
-  const response = error && error.response
-  return response ? isUnauthorizedResponse(response) : false
-}
-
 function parseResponse(response) {
   const body = response.data || {}
   if (response.statusCode >= 200 && response.statusCode < 300 && body.code === 200) {
@@ -182,45 +177,63 @@ async function executeUpload(options) {
   })
 }
 
-async function retryWithRefresh(options, executor) {
+// 登录态恢复链路（一次完成，避免二次 refresh 死锁）：
+// 1) 尝试 refresh accessToken 后重试；
+// 2) refresh 失败（token 已失效 / 网络异常）时降级 wx.login 静默登录后重试；
+// 3) 静默登录也失败才标记会话失效并引导手动登录。
+async function recoverSession(options, executor) {
   if (options.custom && options.custom.skipRefresh) {
     throw new Error('当前请求禁止自动刷新 Token')
   }
 
   const authStore = useSubeaseAuthStore()
-  await authStore.refreshAccessToken()
-  const retriedOptions = {
+  const buildRetriedOptions = () => ({
     ...options,
     custom: {
       ...(options.custom || {}),
       retried: true
     }
+  })
+
+  // ① 先尝试 refresh
+  try {
+    await authStore.refreshAccessToken()
+    const response = await executor(buildRetriedOptions())
+    return parseResponse(response)
+  } catch (refreshError) {
+    console.warn('[SubeaseRequest] accessToken 刷新失败，尝试静默登录恢复', refreshError.message)
   }
-  const response = await executor(retriedOptions)
-  return parseResponse(response)
+
+  // ② 降级静默登录（wx.login 重新换取 token）
+  try {
+    await authStore.wxSilentLogin(true)
+    if (!authStore.accessToken) {
+      throw new Error('登录态恢复失败，请重新登录')
+    }
+    const response = await executor(buildRetriedOptions())
+    return parseResponse(response)
+  } catch (loginError) {
+    // ③ 静默登录也失败：标记会话失效，引导手动登录
+    try {
+      authStore.markSessionExpired()
+      if (!authStore.isLoggedIn) {
+        await redirectToAuthPage()
+      }
+    } catch {}
+    throw loginError
+  }
 }
 
 export async function request(options = {}) {
   try {
     const response = await executeRequest(options)
     if (isUnauthorizedResponse(response) && !(options.custom && options.custom.retried)) {
-      return await retryWithRefresh(options, executeRequest)
+      return await recoverSession(options, executeRequest)
     }
     return parseResponse(response)
   } catch (error) {
     if (error.response && isUnauthorizedResponse(error.response)) {
-      try {
-        return await retryWithRefresh(options, executeRequest)
-      } catch (refreshError) {
-        if (isUnauthorizedError(refreshError)) {
-          try {
-            const authStore = useSubeaseAuthStore()
-            authStore.markSessionExpired()
-          } catch {}
-          await redirectToAuthPage()
-        }
-        throw refreshError
-      }
+      return await recoverSession(options, executeRequest)
     }
     throw error
   }
@@ -230,23 +243,12 @@ export async function uploadFile(options = {}) {
   try {
     const response = await executeUpload(options)
     if (isUnauthorizedResponse(response) && !(options.custom && options.custom.retried)) {
-      return await retryWithRefresh(options, executeUpload)
+      return await recoverSession(options, executeUpload)
     }
     return parseResponse(response)
   } catch (error) {
     if (error.response && isUnauthorizedResponse(error.response)) {
-      try {
-        return await retryWithRefresh(options, executeUpload)
-      } catch (refreshError) {
-        if (isUnauthorizedError(refreshError)) {
-          try {
-            const authStore = useSubeaseAuthStore()
-            authStore.markSessionExpired()
-          } catch {}
-          await redirectToAuthPage()
-        }
-        throw refreshError
-      }
+      return await recoverSession(options, executeUpload)
     }
     throw error
   }

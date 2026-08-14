@@ -11,6 +11,57 @@ function isUnauthorized(error) {
   return statusCode === 401 || code === 401
 }
 
+// ── JWT 本地解析（仅用于预检 accessToken 是否过期）──
+// 不依赖 atob，兼容微信小程序各 JS 引擎（JSCore / V8）
+const B64_CHARS =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+function base64UrlDecode(str) {
+  const b64 = String(str).replace(/-/g, '+').replace(/_/g, '/')
+  const pad = b64.length % 4
+  const normalized = pad ? b64 + '==='.slice(0, 4 - pad) : b64
+  const bytes = []
+  let buffer = 0
+  let bits = 0
+  for (let i = 0; i < normalized.length; i++) {
+    const code = B64_CHARS.indexOf(normalized[i])
+    if (code < 0) continue
+    buffer = (buffer << 6) | code
+    bits += 6
+    if (bits >= 8) {
+      bits -= 8
+      bytes.push((buffer >> bits) & 0xff)
+    }
+  }
+  let text = ''
+  for (let i = 0; i < bytes.length; i++) {
+    text += String.fromCharCode(bytes[i])
+  }
+  try {
+    text = decodeURIComponent(escape(text))
+  } catch (error) {
+    // 非 UTF-8 内容时保持原始文本
+  }
+  return text
+}
+
+function parseJwtPayload(token) {
+  try {
+    const parts = String(token || '').split('.')
+    if (parts.length !== 3) return null
+    return JSON.parse(base64UrlDecode(parts[1]))
+  } catch (error) {
+    return null
+  }
+}
+
+// accessToken 是否已过期（无法解析时返回 false，交由后端 401 判定）
+function isAccessTokenExpired(token, skewSeconds = 60) {
+  const payload = parseJwtPayload(token)
+  if (!payload || !payload.exp) return false
+  return payload.exp * 1000 - skewSeconds * 1000 <= Date.now()
+}
+
 function loadPersistedState() {
   try {
     const raw = uni.getStorageSync(AUTH_STORAGE_KEY)
@@ -199,21 +250,45 @@ export const useSubeaseAuthStore = defineStore('subeaseAuth', {
         return null
       }
 
+      // 已有本地登录态：预检 accessToken 是否过期，过期则先走刷新链路，
+      // 避免带着过期 token 进入页面后连环 401（表现为「token 拉取失败」）
       if (!force && this.accessToken) {
-        if (!this.userInfo) {
-          try {
-            await this.fetchCurrentUser()
-          } catch (error) {
-            console.error('[SubeaseAuthStore] 拉取当前用户资料失败', error)
-            this.authReady = true
-            if (isUnauthorized(error)) {
-              this.clearAuth()
+        const tokenExpired = isAccessTokenExpired(this.accessToken)
+        if (!tokenExpired) {
+          if (!this.userInfo) {
+            try {
+              await this.fetchCurrentUser()
+            } catch (error) {
+              console.error('[SubeaseAuthStore] 拉取当前用户资料失败', error)
+              this.authReady = true
+              if (isUnauthorized(error)) {
+                this.clearAuth()
+              }
+              return null
             }
-            return null
           }
+          this.authReady = true
+          return this.userInfo
         }
-        this.authReady = true
-        return this.userInfo
+
+        // accessToken 已过期：先尝试 refresh；refresh 失败（token 被轮换/失效）时
+        // 降级走 wx.login 静默登录，用户无感恢复，而不是要求「退出重登」
+        try {
+          await this.refreshAccessToken()
+          this.authReady = true
+          return this.userInfo
+        } catch (error) {
+          console.warn(
+            '[SubeaseAuthStore] accessToken 已过期且刷新失败，尝试静默登录恢复',
+            error.message
+          )
+          if (!isUnauthorized(error)) {
+            // 网络/服务端瞬时错误：保留现有 token，由后续请求的重试链路自愈
+            this.authReady = true
+            return this.userInfo
+          }
+          // refreshToken 已失效（refreshAccessToken 内部已 clearAuth），继续走静默登录
+        }
       }
 
       silentLoginPromise = (async () => {
@@ -231,7 +306,11 @@ export const useSubeaseAuthStore = defineStore('subeaseAuth', {
           return data.userInfo
         } catch (error) {
           console.error('[SubeaseAuthStore] 微信登录失败', error)
-          this.clearAuth()
+          // 静默登录失败时，若本地仍持有 token 则不强行清空，
+          // 避免把可能可用的登录态误删、迫使后续手动重登
+          if (!this.accessToken) {
+            this.clearAuth()
+          }
           this.authReady = true
           throw error
         } finally {
