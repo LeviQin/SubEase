@@ -1194,10 +1194,23 @@ export default {
         success: (res) => {
           const file = res.tempFiles && res.tempFiles[0]
           if (!file) return
+          // 微信 extension 过滤严格区分大小写、且 Android 部分机型过滤不生效，选择后自行兜底校验
+          const ext = String(file.name || '').split('.').pop().toLowerCase()
+          if (ext && !['csv', 'txt'].includes(ext)) {
+            this.showToast('仅支持 CSV / TXT 文件')
+            return
+          }
           const fs = uni.getFileSystemManager()
           try {
-            const content = fs.readFileSync(file.path, 'utf8')
-            this.importText = content
+            // Android 部分机型 chooseMessageFile 返回的 path 以 http://tmp/ 开头，
+            // readFileSync 无法直接读取，需转换为 wxfile://tmp/ 本地协议路径
+            let path = file.path || ''
+            if (path.indexOf('http://tmp/') === 0) {
+              path = path.replace('http://tmp/', 'wxfile://tmp/')
+            }
+            const content = fs.readFileSync(path, 'utf8')
+            // 剥离 UTF-8 BOM，避免首行「\uFEFF名称」导致表头识别失败
+            this.importText = content.replace(/^\uFEFF/, '')
             this.importPreview = null
             this.showToast('已读取文件，点击解析预览')
           } catch (error) {
@@ -1205,7 +1218,13 @@ export default {
             this.showToast('读取文件失败，请手动粘贴内容')
           }
         },
-        fail: () => {}
+        fail: (error) => {
+          // 用户主动取消不提示；隐私未授权/系统异常给出可操作提示
+          const errMsg = (error && error.errMsg) || ''
+          if (errMsg.indexOf('cancel') !== -1) return
+          const isPrivacy = errMsg.indexOf('privacy') !== -1 || String(error && error.errCode) === '112'
+          this.showToast(isPrivacy ? '需在微信隐私保护指引中声明"收集你选中的文件"' : '打开文件选择器失败，请手动粘贴 CSV')
+        }
       })
       // #endif
       // #ifndef MP-WEIXIN
@@ -1711,7 +1730,7 @@ export default {
       else if (key === 'done') this.closeSheet()
       else if (key === 'edit') this.openAddSheet(this.currentSubscription?.id)
       else if (key === 'delete') this.openDeleteSheet(this.currentSubscription?.id)
-      else if (key === 'cancel' && (t === 'confirm-delete' || t === 'batch-delete' || t === 'form' || t === 'feedback' || t === 'profile-sync')) this.closeSheet()
+      else if (key === 'cancel' && (t === 'confirm-delete' || t === 'batch-delete' || t === 'form' || t === 'feedback' || t === 'profile-sync' || t === 'import')) this.closeSheet()
       else if (key === 'delete-confirm' && t === 'confirm-delete') this.confirmDelete()
       else if (key === 'delete-confirm' && t === 'batch-delete') this.confirmBatchDelete()
       else if (key === 'cancel-login' && t === 'login') this.cancelLoginSheet()
