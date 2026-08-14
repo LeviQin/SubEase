@@ -83,18 +83,22 @@
       @footer-action="onFooterAction"
     >
       <template v-if="sheetState.type === 'filter'">
-        <view class="sheet-section-label">分类（长按自定义分类可删除）</view>
+        <view class="sheet-section-label">分类（长按自定义分类可修改/删除）</view>
         <view class="chip-group">
           <view
             v-for="category in categoryOptions"
             :key="category"
             :class="['filter-chip', filterCategory === category ? 'is-active' : '']"
             @click="setFilterCategory(category)"
-            @longpress="removeCustomCategory(category)"
+            @longpress="handleCategoryLongPress(category)"
           >
             {{ category }}
           </view>
-          <view class="filter-chip filter-chip-add" @click="addCustomCategory">＋ 新建</view>
+          <view
+            v-if="customCategories.length < MAX_CUSTOM_CATEGORIES"
+            class="filter-chip filter-chip-add"
+            @click="addCustomCategory"
+          >＋ 新建</view>
         </view>
       </template>
 
@@ -311,6 +315,7 @@
           :category-options="categoryOptions"
           :currency-options="currencyOptions"
           :currency-index="currencyIndex"
+          :hide-add-category="customCategories.length >= MAX_CUSTOM_CATEGORIES"
           @update-field="onFormFieldUpdate"
           @currency-change="onCurrencyChange"
           @add-category="addCustomCategory"
@@ -353,7 +358,9 @@ import {
   getVisibleSubscriptions,
   getWeekExpense,
   normalizeSubscriptions,
-  parseSubscriptionsCsv
+  parseSubscriptionsCsv,
+  renameCustomCategory,
+  validateCustomCategory
 } from '@/utils/subease/helpers'
 import {
   loadCustomCategories,
@@ -364,7 +371,7 @@ import {
   saveSubscriptionsCache,
   clearSubscriptionsCache
 } from '@/utils/subease/cache'
-import { CATEGORY_OPTIONS, CURRENCY_OPTIONS, DEFAULT_PROFILE, POPULAR_SUBSCRIPTIONS } from '@/utils/subease/constants'
+import { CATEGORY_OPTIONS, CURRENCY_OPTIONS, DEFAULT_PROFILE, MAX_CUSTOM_CATEGORIES, POPULAR_SUBSCRIPTIONS } from '@/utils/subease/constants'
 import { createEmptyFormState, createInitialState } from '@/utils/subease/state'
 import { useSubeaseAuthStore, getWeixinLoginCode } from '@/stores/subease/auth'
 import { updateProfile, wxLogin } from '@/api/subease/auth'
@@ -912,20 +919,19 @@ export default {
       this.showToast('仅微信小程序支持自定义分类')
       return
       // #endif
+      if (this.customCategories.length >= MAX_CUSTOM_CATEGORIES) {
+        this.showToast(`最多可新增 ${MAX_CUSTOM_CATEGORIES} 个自定义分类`)
+        return
+      }
       const doAdd = (name) => {
-        const trimmed = (name || '').trim()
-        if (!trimmed) return
-        if (trimmed.length > 6) {
-          this.showToast('分类名称最多 6 个字')
+        const result = validateCustomCategory(name, this.categoryOptions)
+        if (!result.ok) {
+          if (result.message) this.showToast(result.message)
           return
         }
-        if (this.categoryOptions.includes(trimmed)) {
-          this.showToast('该分类已存在')
-          return
-        }
-        this.customCategories = [...this.customCategories, trimmed]
+        this.customCategories = [...this.customCategories, result.value]
         saveCustomCategories(this.customCategories)
-        this.showToast(`已添加分类「${trimmed}」`)
+        this.showToast(`已添加分类「${result.value}」`)
       }
       uni.showModal({
         title: '新建分类',
@@ -933,6 +939,57 @@ export default {
         placeholderText: '例如：云存储',
         success: (res) => {
           if (res.confirm) doAdd(res.content)
+        }
+      })
+    },
+    // 长按自定义分类：弹出「修改名称 / 删除分类」操作
+    handleCategoryLongPress(category) {
+      if (!this.customCategoryNames.has(category)) return
+      uni.showActionSheet({
+        itemList: ['修改名称', '删除分类'],
+        success: (res) => {
+          if (res.tapIndex === 0) {
+            this.editCustomCategory(category)
+          } else if (res.tapIndex === 1) {
+            this.removeCustomCategory(category)
+          }
+        },
+        fail: () => {
+          // 用户取消或非微信环境，忽略
+        }
+      })
+    },
+    editCustomCategory(category) {
+      if (!this.customCategoryNames.has(category)) return
+      // #ifndef MP-WEIXIN
+      this.showToast('仅微信小程序支持自定义分类')
+      return
+      // #endif
+      const doRename = (name) => {
+        // 排除自身：改回原名或改到另一个名字时，重名校验只针对「其他分类」
+        const others = this.categoryOptions.filter((item) => item !== category)
+        const result = validateCustomCategory(name, others)
+        if (!result.ok) {
+          if (result.message) this.showToast(result.message)
+          return
+        }
+        const renamed = result.value
+        this.customCategories = renameCustomCategory(this.customCategories, category, renamed)
+        saveCustomCategories(this.customCategories)
+        // 正在筛选/编辑该分类时同步更新引用
+        if (this.filterCategory === category) this.filterCategory = renamed
+        if (this.formState.category === category) {
+          this.formState = { ...this.formState, category: renamed }
+        }
+        this.showToast('分类已修改')
+      }
+      uni.showModal({
+        title: '修改分类',
+        editable: true,
+        content: category,
+        placeholderText: '分类名称',
+        success: (res) => {
+          if (res.confirm) doRename(res.content)
         }
       })
     },
@@ -947,6 +1004,9 @@ export default {
           this.customCategories = this.customCategories.filter((item) => item !== category)
           saveCustomCategories(this.customCategories)
           if (this.filterCategory === category) this.filterCategory = ''
+          if (this.formState.category === category) {
+            this.formState = { ...this.formState, category: '' }
+          }
           this.showToast('已删除分类')
         }
       })

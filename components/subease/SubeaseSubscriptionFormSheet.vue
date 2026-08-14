@@ -54,7 +54,7 @@
         >
           {{ item }}
         </view>
-        <view class="option-chip option-chip-add" @click="$emit('add-category')">＋ 自定义</view>
+        <view v-if="!hideAddCategory" class="option-chip option-chip-add" @click="$emit('add-category')">＋ 自定义</view>
       </view>
     </view>
 
@@ -138,6 +138,11 @@ export default {
     currencyIndex: {
       type: Number,
       default: 0
+    },
+    // 自定义分类达上限时隐藏「＋ 自定义」入口
+    hideAddCategory: {
+      type: Boolean,
+      default: false
     }
   },
   emits: ['update-field', 'currency-change', 'add-category', 'open-preset']

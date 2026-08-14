@@ -1,5 +1,6 @@
 // 本地缓存：订阅列表（弱网/离线可用）+ 汇率（24h 有效）
 // 订阅数据为低频变更数据，缓存策略：先渲染缓存 → 后台刷新 → 失败回退缓存
+import { MAX_CUSTOM_CATEGORIES } from './constants'
 
 const SUBSCRIPTIONS_CACHE_KEY = 'subease-subscriptions-cache'
 const RATES_CACHE_KEY = 'subease-rates-cache'
@@ -60,7 +61,9 @@ export function loadCustomCategories() {
 
 export function saveCustomCategories(list) {
   try {
-    uni.setStorageSync(CUSTOM_CATEGORIES_KEY, Array.isArray(list) ? list : [])
+    // 与前端上限保持一致，防御性截断，避免脏数据超限
+    const safeList = Array.isArray(list) ? list.filter((item) => typeof item === 'string' && item.trim()) : []
+    uni.setStorageSync(CUSTOM_CATEGORIES_KEY, safeList.slice(0, MAX_CUSTOM_CATEGORIES))
   } catch {
     // ignore
   }

@@ -554,6 +554,23 @@ export function getAvatarText(name) {
   return /[a-zA-Z]/.test(first) ? first.toUpperCase() : first
 }
 
+// ═══ 自定义分类校验（纯函数，供新增/修改共用）═══
+// existingCategories：用于重名校验的现有分类全集（默认分类 + 自定义 + 订阅中出现的分类）
+// 修改分类时调用方需先剔除自身，避免「改回原名」被误判为重复
+export function validateCustomCategory(name, existingCategories = []) {
+  const trimmed = String(name || '').trim()
+  if (!trimmed) return { ok: false, message: '' }
+  if (trimmed.length > 6) return { ok: false, message: '分类名称最多 6 个字' }
+  if (existingCategories.includes(trimmed)) return { ok: false, message: '该分类已存在' }
+  return { ok: true, value: trimmed }
+}
+
+// 分类重命名（纯函数）：返回新列表；未变化时返回原引用
+export function renameCustomCategory(categories, oldName, newName) {
+  if (oldName === newName) return categories
+  return categories.map((item) => (item === oldName ? newName : item))
+}
+
 // ═══ 批量导入：CSV 文本解析（纯函数）═══
 // 支持两种格式：
 // 1) 导出格式（含表头，9 列）：名称,金额,货币,分类,周期,下次付款日,支付方式,自动续费,备注

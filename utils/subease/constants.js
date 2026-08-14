@@ -3,6 +3,9 @@
 
 export const CATEGORY_OPTIONS = ['视频', '音乐', '工具', '其他']
 
+// 自定义分类数量上限（达到后隐藏「新建/自定义」入口）
+export const MAX_CUSTOM_CATEGORIES = 10
+
 export const CURRENCY_OPTIONS = ['CNY', 'USD', 'EUR', 'JPY', 'GBP', 'HKD', 'KRW', 'AUD']
 
 export const DEFAULT_PROFILE = {
