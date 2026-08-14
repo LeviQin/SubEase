@@ -83,16 +83,21 @@
       @footer-action="onFooterAction"
     >
       <template v-if="sheetState.type === 'filter'">
-        <view class="sheet-section-label">分类（长按自定义分类可修改/删除）</view>
+        <view class="sheet-section-label">分类（自定义分类点「···」可修改/删除）</view>
         <view class="chip-group">
           <view
             v-for="category in categoryOptions"
             :key="category"
-            :class="['filter-chip', filterCategory === category ? 'is-active' : '']"
+            :class="['filter-chip', filterCategory === category ? 'is-active' : '', customCategoryNames.has(category) ? 'is-custom' : '']"
             @click="setFilterCategory(category)"
             @longpress="handleCategoryLongPress(category)"
           >
-            {{ category }}
+            <text class="filter-chip-text">{{ category }}</text>
+            <view
+              v-if="customCategoryNames.has(category)"
+              class="filter-chip-more"
+              @click.stop="handleCategoryLongPress(category)"
+            >···</view>
           </view>
           <view
             v-if="customCategories.length < MAX_CUSTOM_CATEGORIES"
@@ -1750,6 +1755,8 @@ export default {
 
 .filter-chip,
 .option-chip {
+  display: inline-flex;
+  align-items: center;
   padding: 18rpx 28rpx;
   border-radius: var(--radius-pill);
   background: var(--bg-muted);
@@ -1764,6 +1771,45 @@ export default {
   color: var(--text-inverse);
   font-weight: 600;
   box-shadow: var(--shadow-xs);
+}
+
+.filter-chip-text {
+  line-height: 1;
+}
+
+.filter-chip-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44rpx;
+  height: 44rpx;
+  margin: -8rpx -10rpx -8rpx 10rpx;
+  padding: 0 8rpx;
+  border-radius: var(--radius-full);
+  font-size: 22rpx;
+  font-weight: 700;
+  letter-spacing: 2rpx;
+  color: var(--text-tertiary);
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.is-active .filter-chip-more {
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.filter-chip-more:active {
+  background: rgba(0, 0, 0, 0.14);
+}
+
+@media (prefers-color-scheme: dark) {
+  .filter-chip-more {
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .filter-chip-more:active {
+    background: rgba(255, 255, 255, 0.22);
+  }
 }
 
 .filter-chip-add {
