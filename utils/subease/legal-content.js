@@ -86,7 +86,7 @@ export const PRIVACY_SECTIONS = [
 
 export const ABOUT_INFO = {
   appName: '归期本',
-  version: 'v1.1.1',
+  version: 'v1.1.2',
   description: '订阅管理 · 到期提醒',
   entity: PLACEHOLDER_ENTITY,
   contact: PLACEHOLDER_CONTACT,
