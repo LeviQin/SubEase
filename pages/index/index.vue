@@ -96,7 +96,7 @@
             <text v-if="customCategoryNames.has(category)" class="filter-chip-badge">自</text>
           </view>
           <view
-            v-if="customCategories.length < MAX_CUSTOM_CATEGORIES"
+            v-if="effectiveCustomCategories.length < MAX_CUSTOM_CATEGORIES"
             class="filter-chip filter-chip-add"
             @click="addCustomCategory"
           >＋ 新建</view>
@@ -104,10 +104,10 @@
       </template>
 
       <template v-else-if="sheetState.type === 'manage-categories'">
-        <view class="manage-cat-tip">自定义分类最多 {{ MAX_CUSTOM_CATEGORIES }} 个，已有 {{ customCategories.length }} 个</view>
-        <view v-if="customCategories.length === 0" class="manage-cat-empty">
+        <view class="manage-cat-tip">自定义分类最多 {{ MAX_CUSTOM_CATEGORIES }} 个，已有 {{ effectiveCustomCategories.length }} 个</view>
+        <view v-if="effectiveCustomCategories.length === 0" class="manage-cat-empty">
           <text class="manage-cat-empty-title">暂无自定义分类</text>
-          <text class="manage-cat-empty-desc">分类列表里带「自」标记的才是自定义分类；订阅中使用的分类会自动显示但不会计入，需通过「＋ 新建」添加后才能在这里管理。</text>
+          <text class="manage-cat-empty-desc">除「视频 / 音乐 / 工具 / 其他」外，其余分类均为自定义分类；可在筛选弹窗点「＋ 新建」添加。</text>
           <view class="manage-cat-debug">
             <text class="manage-cat-debug-label">本地存储诊断：</text>
             <text class="manage-cat-debug-value">{{ rawCustomCategoriesDebug }}</text>
@@ -115,7 +115,7 @@
           <view class="manage-cat-empty-btn" @click="reloadCustomCategories">重新加载本地数据</view>
         </view>
         <view v-else class="manage-cat-list">
-          <view v-for="cat in customCategories" :key="cat" class="manage-cat-item">
+          <view v-for="cat in effectiveCustomCategories" :key="cat" class="manage-cat-item">
             <text class="manage-cat-name">{{ cat }}</text>
             <view class="manage-cat-actions">
               <view class="manage-cat-btn manage-cat-btn-edit" @click="editCustomCategory(cat)">修改</view>
@@ -338,8 +338,8 @@
           :category-options="categoryOptions"
           :currency-options="currencyOptions"
           :currency-index="currencyIndex"
-          :hide-add-category="customCategories.length >= MAX_CUSTOM_CATEGORIES"
-          :custom-categories="customCategories"
+          :hide-add-category="effectiveCustomCategories.length >= MAX_CUSTOM_CATEGORIES"
+          :custom-categories="effectiveCustomCategories"
           @update-field="onFormFieldUpdate"
           @currency-change="onCurrencyChange"
           @add-category="addCustomCategory"
@@ -385,6 +385,7 @@ import {
   normalizeSubscriptions,
   parseSubscriptionsCsv,
   applyCategoryChangeToSubscriptions,
+  mergeCustomCategories,
   renameCustomCategory,
   validateCustomCategory
 } from '@/utils/subease/helpers'
@@ -570,7 +571,11 @@ export default {
       return merged
     },
     customCategoryNames() {
-      return new Set(this.customCategories)
+      return new Set(this.effectiveCustomCategories)
+    },
+    // 有效自定义分类 = 本地存储 ∪ 订阅中使用的非默认分类（非默认即自定义）
+    effectiveCustomCategories() {
+      return mergeCustomCategories(this.customCategories, this.subscriptions, CATEGORY_OPTIONS)
     },
     // 管理面板空状态诊断：直接读取 storage 原始值，定位「数据不存在」还是「读取失败」
     rawCustomCategoriesDebug() {
@@ -888,6 +893,8 @@ export default {
         const normalized = normalizeSubscriptions(list || [])
         this.subscriptions = normalized
         saveSubscriptionsCache(normalized)
+        // 数据自愈：订阅中使用的非默认分类合并为自定义分类并回写 storage
+        this.syncCustomCategoriesFromSubscriptions(normalized)
       } catch (error) {
         console.error('[Subease] 获取订阅列表失败', error)
         const fallback = loadSubscriptionsCache()
@@ -971,7 +978,7 @@ export default {
       this.showToast('仅微信小程序支持自定义分类')
       return
       // #endif
-      if (this.customCategories.length >= MAX_CUSTOM_CATEGORIES) {
+      if (this.effectiveCustomCategories.length >= MAX_CUSTOM_CATEGORIES) {
         this.showToast(`最多可新增 ${MAX_CUSTOM_CATEGORIES} 个自定义分类`)
         return
       }
@@ -994,13 +1001,24 @@ export default {
         }
       })
     },
-    // 管理面板空状态：重新从本地 storage 加载自定义分类
+    // 管理面板空状态：重新从本地 storage 加载自定义分类（含订阅中使用的非默认分类）
     reloadCustomCategories() {
       const loaded = loadCustomCategories()
-      this.customCategories = loaded
+      this.customCategories = mergeCustomCategories(loaded, this.subscriptions, CATEGORY_OPTIONS)
+      saveCustomCategories(this.customCategories)
       this.showToast(
-        loaded.length ? `已加载 ${loaded.length} 个自定义分类` : '本地没有自定义分类数据'
+        this.customCategories.length
+          ? `已加载 ${this.customCategories.length} 个自定义分类`
+          : '没有自定义分类（除默认 4 类外，其余均为自定义分类）'
       )
+    },
+    // 订阅拉取成功后：将订阅中使用的非默认分类合并进自定义分类并回写 storage（数据自愈）
+    syncCustomCategoriesFromSubscriptions(list) {
+      const merged = mergeCustomCategories(this.customCategories, list || [], CATEGORY_OPTIONS)
+      if (merged.length !== this.customCategories.length) {
+        this.customCategories = merged
+        saveCustomCategories(merged)
+      }
     },
     // 筛选弹窗长按自定义分类：打开管理面板，返回时回到筛选弹窗
     handleFilterChipLongPress(category) {

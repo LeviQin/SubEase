@@ -578,6 +578,23 @@ export function applyCategoryChangeToSubscriptions(subscriptions, from, to) {
   )
 }
 
+// 合并有效自定义分类（纯函数）：本地存储的自定义分类 ∪ 订阅中使用的非默认分类
+// 规则：除默认分类（视频/音乐/工具/其他）外，其他分类均视为自定义分类。
+// 用于恢复「storage 丢失但订阅仍在使用的分类」为自定义分类（可管理、带角标）。
+export function mergeCustomCategories(storedCategories, subscriptions, defaultCategories = []) {
+  const stored = Array.isArray(storedCategories) ? storedCategories.filter(Boolean) : []
+  const seen = new Set(stored)
+  const merged = [...stored]
+  ;(subscriptions || []).forEach((item) => {
+    const cat = String((item && item.category) || '').trim()
+    if (cat && !defaultCategories.includes(cat) && !seen.has(cat)) {
+      seen.add(cat)
+      merged.push(cat)
+    }
+  })
+  return merged
+}
+
 // ═══ 批量导入：CSV 文本解析（纯函数）═══
 // 支持两种格式：
 // 1) 导出格式（含表头，9 列）：名称,金额,货币,分类,周期,下次付款日,支付方式,自动续费,备注
