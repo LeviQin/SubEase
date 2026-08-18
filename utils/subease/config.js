@@ -3,7 +3,7 @@ export const API_BASE_URL = {
   // 微信小程序真机/线上环境
   MP_WEIXIN: 'https://api.leviqin.top/api',
   // 本地开发环境
-  LOCAL: 'http://127.0.0.1:3000/api'
+  LOCAL: 'http://127.0.0.1:3001/api'
 }
 
 // 微信订阅消息模板 ID（类目：记账，标题：会员到期通知）

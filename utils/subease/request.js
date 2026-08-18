@@ -227,12 +227,20 @@ async function recoverSession(options, executor) {
 export async function request(options = {}) {
   try {
     const response = await executeRequest(options)
-    if (isUnauthorizedResponse(response) && !(options.custom && options.custom.retried)) {
+    if (
+      isUnauthorizedResponse(response) &&
+      !(options.custom && options.custom.retried) &&
+      !(options.custom && options.custom.skipRefresh)
+    ) {
       return await recoverSession(options, executeRequest)
     }
     return parseResponse(response)
   } catch (error) {
-    if (error.response && isUnauthorizedResponse(error.response)) {
+    if (
+      error.response &&
+      isUnauthorizedResponse(error.response) &&
+      !(options.custom && options.custom.skipRefresh)
+    ) {
       return await recoverSession(options, executeRequest)
     }
     throw error
@@ -242,12 +250,20 @@ export async function request(options = {}) {
 export async function uploadFile(options = {}) {
   try {
     const response = await executeUpload(options)
-    if (isUnauthorizedResponse(response) && !(options.custom && options.custom.retried)) {
+    if (
+      isUnauthorizedResponse(response) &&
+      !(options.custom && options.custom.retried) &&
+      !(options.custom && options.custom.skipRefresh)
+    ) {
       return await recoverSession(options, executeUpload)
     }
     return parseResponse(response)
   } catch (error) {
-    if (error.response && isUnauthorizedResponse(error.response)) {
+    if (
+      error.response &&
+      isUnauthorizedResponse(error.response) &&
+      !(options.custom && options.custom.skipRefresh)
+    ) {
       return await recoverSession(options, executeUpload)
     }
     throw error
