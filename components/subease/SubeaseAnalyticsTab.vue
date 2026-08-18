@@ -33,7 +33,7 @@
       <view class="section-label">下月扣款预测</view>
       <view class="next-month-card">
         <text class="next-month-value">{{ formatCurrency(analytics.nextMonthTotal, 'CNY', amountsHidden) }}</text>
-        <text class="next-month-desc">月付订阅必计，季度付/年付按到期日计入</text>
+        <text class="next-month-desc">仅统计下个月到期且未预付的订阅</text>
       </view>
 
       <view class="section-label">本周支出</view>

@@ -500,6 +500,12 @@ export default {
       })
     })
   },
+  onShow() {
+    if (!this.authReady || !this.loggedIn) return
+    // 从后台恢复时先立即重算日期状态，再静默同步服务端数据。
+    this.subscriptions = normalizeSubscriptions(this.subscriptions)
+    this.fetchSubscriptions({ silent: true })
+  },
   onShareAppMessage() {
     return {
       title: '归期本 · 订阅到期提醒，再也不忘续费',
@@ -1282,11 +1288,13 @@ export default {
         this.showToast('请输入订阅名称')
         return
       }
-      if (!payload.price || Number.isNaN(payload.price)) {
+      const price = Number(this.formState.price)
+      if (!Number.isFinite(price) || price <= 0) {
         this.showToast('请输入有效金额')
         return
       }
-      if (payload.paidCycles < 1 || payload.paidCycles > 120) {
+      const paidCycles = Number(this.formState.paidCycles)
+      if (!Number.isInteger(paidCycles) || paidCycles < 1 || paidCycles > 120) {
         this.showToast('预付周期数需为 1~120 之间的整数')
         return
       }

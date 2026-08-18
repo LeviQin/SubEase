@@ -4,13 +4,13 @@
       <view class="hero">
         <text class="hero-year">{{ report.year }}</text>
         <text class="hero-title">年度订阅账单</text>
-        <text class="hero-amount">¥{{ report.total.toLocaleString() }}</text>
+        <text class="hero-amount">{{ formatCurrency(report.total, 'CNY') }}</text>
         <text class="hero-desc">全年订阅支出（按周期估算）</text>
       </view>
 
       <view class="metric-row">
         <view class="metric-card">
-          <text class="metric-value">¥{{ report.monthlyAverage.toLocaleString() }}</text>
+          <text class="metric-value">{{ formatCurrency(report.monthlyAverage, 'CNY') }}</text>
           <text class="metric-label">月均支出</text>
         </view>
         <view class="metric-card">
@@ -18,7 +18,7 @@
           <text class="metric-label">支出最高月份</text>
         </view>
         <view class="metric-card">
-          <text class="metric-value">¥{{ report.peakMonth.amount.toLocaleString() }}</text>
+          <text class="metric-value">{{ formatCurrency(report.peakMonth.amount, 'CNY') }}</text>
           <text class="metric-label">最高月支出</text>
         </view>
       </view>
@@ -27,7 +27,7 @@
       <view class="chart-card">
         <view class="chart-bars">
           <view v-for="month in report.months" :key="month.key" class="chart-bar-wrap">
-            <text class="chart-value">{{ month.amount > 0 ? '¥' + month.amount : '' }}</text>
+            <text class="chart-value">{{ month.amount > 0 ? formatCurrency(month.amount, 'CNY') : '' }}</text>
             <view class="chart-bar-track">
               <view
                 class="chart-bar-fill"
@@ -45,7 +45,7 @@
         <view v-for="(item, index) in report.topSubscriptions" :key="item.name" class="rank-row">
           <text :class="['rank-index', index < 3 ? 'is-top' : '']">{{ index + 1 }}</text>
           <text class="rank-name">{{ item.name }}</text>
-          <text class="rank-amount">¥{{ item.amount.toLocaleString() }}</text>
+          <text class="rank-amount">{{ formatCurrency(item.amount, 'CNY') }}</text>
         </view>
       </view>
       <view v-else class="rank-empty">暂无订阅数据</view>
@@ -61,7 +61,7 @@
 </template>
 
 <script>
-import { normalizeSubscriptions, getYearlyBreakdown } from '@/utils/subease/helpers'
+import { formatCurrency, normalizeSubscriptions, getYearlyBreakdown } from '@/utils/subease/helpers'
 import { loadSubscriptionsCache, loadRatesCache } from '@/utils/subease/cache'
 
 export default {
@@ -76,20 +76,21 @@ export default {
   },
   onShareAppMessage() {
     const year = this.report ? this.report.year : new Date().getFullYear()
-    const total = this.report ? this.report.total : 0
+    const total = this.report ? formatCurrency(this.report.total, 'CNY') : '¥0'
     return {
-      title: `我 ${year} 年在订阅上花了 ¥${total}，你呢？`,
+      title: `我 ${year} 年在订阅上花了 ${total}，你呢？`,
       path: '/pages/index/index'
     }
   },
   onShareTimeline() {
     const year = this.report ? this.report.year : new Date().getFullYear()
-    const total = this.report ? this.report.total : 0
+    const total = this.report ? formatCurrency(this.report.total, 'CNY') : '¥0'
     return {
-      title: `${year} 订阅账单：我花了 ¥${total}`
+      title: `${year} 订阅账单：我花了 ${total}`
     }
   },
   methods: {
+    formatCurrency,
     buildReport() {
       try {
         const cached = loadSubscriptionsCache()

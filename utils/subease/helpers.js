@@ -58,6 +58,43 @@ function addMonthsClamped(date, months) {
   return result
 }
 
+function roundMoney(value) {
+  const amount = Number(value)
+  return Number.isFinite(amount) ? Math.round(amount * 100) / 100 : 0
+}
+
+function getPaidCycles(item) {
+  return Math.max(1, Math.floor(Number(item.paidCycles) || 1))
+}
+
+// 有「上次扣款日」时按实际扣款记录生成事件：预付多周期只记一次，
+// 自动续费从展示用的下一次付款日继续生成；没有上次扣款日的旧数据由调用方按周期估算。
+function getActualPaymentEvents(item, startDate, endDate, rates = {}) {
+  if (!item.lastPaidDate) return null
+
+  const amount = toCny(item.price, item.currency, rates)
+  const cycleMonths = CYCLE_MONTHS_MAP[item.cycle] || 1
+  const lastPaidDate = parseDate(item.lastPaidDate)
+  const events = []
+  if (lastPaidDate >= startDate && lastPaidDate < endDate) {
+    events.push({ date: lastPaidDate, amount: amount * getPaidCycles(item) })
+  }
+
+  if (item.autoRenew) {
+    let nextDate = parseDate(item.displayDate || item.nextDate)
+    let guard = 0
+    while (nextDate < endDate && guard < 120) {
+      if (nextDate >= startDate) {
+        events.push({ date: nextDate, amount })
+      }
+      nextDate = addMonthsClamped(nextDate, cycleMonths)
+      guard += 1
+    }
+  }
+
+  return events
+}
+
 // ═══ 金额工具 ═══
 
 export function getCurrencySymbol(currency) {
@@ -210,7 +247,8 @@ export function getVisibleSubscriptions(subscriptions, searchKeyword, filterCate
 
 export function getSummaryStats(subscriptions, rates = {}) {
   const list = Array.isArray(subscriptions) ? subscriptions : []
-  const monthlyTotal = list.reduce((sum, item) => {
+  const activeList = list.filter((item) => item.status !== 'expired')
+  const monthlyTotal = activeList.reduce((sum, item) => {
     const cny = toCny(item.price, item.currency, rates)
     if (item.cycle === '月付') return sum + cny
     if (item.cycle === '季度付') return sum + cny / 3
@@ -218,22 +256,29 @@ export function getSummaryStats(subscriptions, rates = {}) {
     return sum
   }, 0)
 
-  const yearlyTotal = list.reduce((sum, item) => {
+  const yearlyTotal = activeList.reduce((sum, item) => {
     const multiplier = YEARLY_MULTIPLIER_MAP[item.cycle] || 1
     return sum + toCny(item.price, item.currency, rates) * multiplier
   }, 0)
 
-  // 下月扣款预测：已停用的手动续费订阅不计；月付必计；
-  // 季度付/年付仅当 displayDate 落在下个自然月计入
-  const now = new Date()
-  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1)
-  const nextMonthEnd = new Date(now.getFullYear(), now.getMonth() + 2, 1)
-  const nextMonthTotal = Math.round(
+  // 下月扣款预测：只计算下个月实际发生的下一次扣款；已停用的手动续费订阅不计。
+  // 预付多个周期且预付截止日在下个月或更晚时，下个月无需再次付款。
+  const today = todayStart()
+  const nextMonthStart = new Date(today.getFullYear(), today.getMonth() + 1, 1)
+  const nextMonthEnd = new Date(today.getFullYear(), today.getMonth() + 2, 1)
+  const nextMonthTotal = roundMoney(
     list.reduce((sum, item) => {
       if (item.status === 'expired') return sum
-      if (item.cycle === '月付') return sum + toCny(item.price, item.currency, rates)
       const nextDate = parseDate(item.displayDate || item.nextDate)
-      if (nextDate >= nextMonthStart && nextDate < nextMonthEnd) {
+      const rawNextDate = parseDate(item.nextDate || item.displayDate)
+      const paidCycles = Number(item.paidCycles) || 1
+      if (paidCycles > 1 && rawNextDate >= nextMonthStart) return sum
+
+      // 当前月已到期的月付订阅，下一次扣款会落在下个月；其他周期按周期顺延。
+      const nextMonthDueDate = nextDate >= nextMonthStart
+        ? nextDate
+        : addMonthsClamped(nextDate, CYCLE_MONTHS_MAP[item.cycle] || 1)
+      if (nextMonthDueDate >= nextMonthStart && nextMonthDueDate < nextMonthEnd) {
         return sum + toCny(item.price, item.currency, rates)
       }
       return sum
@@ -241,8 +286,8 @@ export function getSummaryStats(subscriptions, rates = {}) {
   )
 
   return {
-    monthlyTotal: Math.round(monthlyTotal),
-    yearlyTotal: Math.round(yearlyTotal),
+    monthlyTotal: roundMoney(monthlyTotal),
+    yearlyTotal: roundMoney(yearlyTotal),
     nextMonthTotal
   }
 }
@@ -254,7 +299,7 @@ export function getAnalyticsSummary(subscriptions, rates = {}) {
   const { monthlyTotal, yearlyTotal, nextMonthTotal } = getSummaryStats(list, rates)
 
   // 总支出：全部折算 CNY（避免多币种直接相加）
-  const totalSpend = Math.round(list.reduce((sum, item) => sum + toCny(item.price, item.currency, rates), 0))
+  const totalSpend = roundMoney(list.reduce((sum, item) => sum + toCny(item.price, item.currency, rates), 0))
 
   // 分类支出分布（按金额降序）
   const categoryMap = list.reduce((map, item) => {
@@ -263,7 +308,7 @@ export function getAnalyticsSummary(subscriptions, rates = {}) {
     return map
   }, {})
   const categoryStats = Object.keys(categoryMap)
-    .map((category) => ({ category, amount: Math.round(categoryMap[category]) }))
+    .map((category) => ({ category, amount: roundMoney(categoryMap[category]) }))
     .sort((a, b) => b.amount - a.amount)
   const categoryTotal = categoryStats.reduce((sum, item) => sum + item.amount, 0)
   categoryStats.forEach((item) => {
@@ -284,7 +329,7 @@ export function getAnalyticsSummary(subscriptions, rates = {}) {
   const cycleStats = Object.keys(cycleMap).map((cycle) => ({
     cycle,
     count: cycleMap[cycle].count,
-    amount: Math.round(cycleMap[cycle].amount)
+    amount: roundMoney(cycleMap[cycle].amount)
   }))
   const cycleTotal = cycleStats.reduce((sum, item) => sum + item.amount, 0)
   cycleStats.forEach((item) => {
@@ -303,12 +348,12 @@ export function getAnalyticsSummary(subscriptions, rates = {}) {
       name: item.name,
       price: Number(item.price || 0),
       currency: item.currency,
-      monthlyCost: Math.round(monthlyCost(item))
+      monthlyCost: roundMoney(monthlyCost(item))
     }))
     .sort((a, b) => b.monthlyCost - a.monthlyCost)
     .slice(0, 5)
 
-  // 下月扣款预测：由 getSummaryStats 统一计算（月付必计，季/年付按 displayDate 计入）
+  // 下月扣款预测：由 getSummaryStats 统一计算实际下一次扣款日
   return {
     totalSpend,
     monthlyTotal,
@@ -323,10 +368,12 @@ export function getAnalyticsSummary(subscriptions, rates = {}) {
   }
 }
 
-// ═══ 年度账单：按订阅周期反推指定自然年 1-12 月的扣款分布 ═══
+// ═══ 年度账单：按实际扣款与订阅周期估算指定自然年 1-12 月的扣款分布 ═══
 
 export function getYearlyBreakdown(subscriptions, rates = {}, year = new Date().getFullYear()) {
   const list = Array.isArray(subscriptions) ? subscriptions : []
+  const yearStart = new Date(year, 0, 1)
+  const yearEnd = new Date(year + 1, 0, 1)
   const months = []
   for (let m = 0; m < 12; m += 1) {
     months.push({
@@ -342,35 +389,52 @@ export function getYearlyBreakdown(subscriptions, rates = {}, year = new Date().
     const cycleMonths = CYCLE_MONTHS_MAP[item.cycle] || 1
     const amount = toCny(item.price, item.currency, rates)
     if (!amount) return
+    const actualEvents = getActualPaymentEvents(item, yearStart, yearEnd, rates)
+    if (actualEvents) {
+      actualEvents.forEach((event) => {
+        months[event.date.getMonth()].amount += event.amount
+      })
+      return
+    }
     const isAutoRenew = !!item.autoRenew
     const anchor = parseDate(item.displayDate || item.nextDate)
     const anchorIndex = anchor.getFullYear() * 12 + anchor.getMonth()
     months.forEach((month) => {
       const offset = anchorIndex - (year * 12 + month.index)
       if (offset % cycleMonths !== 0) return
-      // 手动续费只计已发生的扣款（锚点月及之前）；自动续费估算全年
+      // 没有上次扣款日的旧数据：手动续费只计已发生的扣款，自动续费估算全年。
       if (!isAutoRenew && offset < 0) return
       month.amount += amount
     })
   })
 
-  const total = months.reduce((sum, month) => sum + month.amount, 0)
-  const monthlyAverage = Math.round(total / 12)
-  const peakMonth = months.reduce(
+  const roundedMonths = months.map((month) => ({ ...month, amount: roundMoney(month.amount) }))
+  const total = roundedMonths.reduce((sum, month) => sum + month.amount, 0)
+  const monthlyAverage = roundMoney(total / 12)
+  const peakMonth = roundedMonths.reduce(
     (best, month) => (month.amount > best.amount ? month : best),
     { label: '-', amount: 0 }
   )
 
-  // TOP 订阅：按年内估算扣款总额
+  // TOP 订阅：按年内实际/估算扣款总额
   const topMap = {}
   list.forEach((item) => {
     if (item.status === 'expired') return
+    const actualEvents = getActualPaymentEvents(item, yearStart, yearEnd, rates)
+    if (actualEvents) {
+      const actualTotal = actualEvents.reduce((sum, event) => sum + event.amount, 0)
+      if (actualTotal > 0) {
+        const key = String(item.name || '未命名')
+        topMap[key] = (topMap[key] || 0) + actualTotal
+      }
+      return
+    }
     const cycleMonths = CYCLE_MONTHS_MAP[item.cycle] || 1
     const isAutoRenew = !!item.autoRenew
     const anchor = parseDate(item.displayDate || item.nextDate)
     const anchorIndex = anchor.getFullYear() * 12 + anchor.getMonth()
     let count = 0
-    months.forEach((month) => {
+    roundedMonths.forEach((month) => {
       const offset = anchorIndex - (year * 12 + month.index)
       if (offset % cycleMonths !== 0) return
       if (!isAutoRenew && offset < 0) return
@@ -381,16 +445,16 @@ export function getYearlyBreakdown(subscriptions, rates = {}, year = new Date().
     topMap[key] = (topMap[key] || 0) + toCny(item.price, item.currency, rates) * count
   })
   const topSubscriptions = Object.keys(topMap)
-    .map((name) => ({ name, amount: Math.round(topMap[name]) }))
+    .map((name) => ({ name, amount: roundMoney(topMap[name]) }))
     .sort((a, b) => b.amount - a.amount)
     .slice(0, 5)
 
   return {
     year,
-    months,
-    total: Math.round(total),
+    months: roundedMonths,
+    total: roundMoney(total),
     monthlyAverage,
-    peakMonth: { label: peakMonth.label, amount: Math.round(peakMonth.amount) },
+    peakMonth: { label: peakMonth.label, amount: roundMoney(peakMonth.amount) },
     topSubscriptions
   }
 }
@@ -398,7 +462,7 @@ export function getYearlyBreakdown(subscriptions, rates = {}, year = new Date().
 // ═══ 月度趋势：基于当前订阅与周期反推历史实际扣款 ═══
 
 /**
- * 生成近 N 个月（含本月）的月度支出趋势（按周期估算，非均摊）。
+ * 生成近 N 个月（含本月）的月度支出趋势（按实际扣款/周期估算，非均摊）。
  * 以每条订阅的 displayDate（下一次扣款日）为锚点，往前每 cycleMonths 个月发生一次扣款；
  * 命中目标月则计入当月。已过期自动续费的订阅会把「滚动前当月已发生的扣款」正确归入历史。
  */
@@ -416,11 +480,32 @@ export function getMonthlyTrend(subscriptions, rates = {}, months = 6) {
       monthIndex: date.getFullYear() * 12 + date.getMonth()
     })
   }
+  const firstBucket = buckets[0]
+  const rangeStart = new Date(
+    Math.floor(firstBucket.monthIndex / 12),
+    firstBucket.monthIndex % 12,
+    1
+  )
+  const lastBucket = buckets[buckets.length - 1]
+  const rangeEnd = new Date(
+    Math.floor(lastBucket.monthIndex / 12),
+    (lastBucket.monthIndex % 12) + 1,
+    1
+  )
 
   list.forEach((item) => {
     const cycleMonths = CYCLE_MONTHS_MAP[item.cycle] || 1
     const amount = toCny(item.price, item.currency, rates)
     if (!amount) return
+    const actualEvents = getActualPaymentEvents(item, rangeStart, rangeEnd, rates)
+    if (actualEvents) {
+      actualEvents.forEach((event) => {
+        const monthIndex = event.date.getFullYear() * 12 + event.date.getMonth()
+        const bucket = buckets.find((itemBucket) => itemBucket.monthIndex === monthIndex)
+        if (bucket) bucket.amount += event.amount
+      })
+      return
+    }
     const anchor = parseDate(item.displayDate || item.nextDate)
     const anchorIndex = anchor.getFullYear() * 12 + anchor.getMonth()
     buckets.forEach((bucket) => {
@@ -429,7 +514,7 @@ export function getMonthlyTrend(subscriptions, rates = {}, months = 6) {
     })
   })
 
-  return buckets
+  return buckets.map((bucket) => ({ ...bucket, amount: roundMoney(bucket.amount) }))
 }
 
 // 近 N 天内到期的订阅数量（供 tab 红点等提醒使用）
@@ -526,7 +611,7 @@ export function getWeekExpense(subscriptions, rates = {}) {
       count += 1
     }
   })
-  return { total: Math.round(total), count }
+  return { total: roundMoney(total), count }
 }
 
 export function createSubscriptionPayload(formState, currentFilter) {
