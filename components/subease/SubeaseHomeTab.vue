@@ -1,5 +1,8 @@
 <template>
   <scroll-view class="tab-scroll" scroll-y :show-scrollbar="false">
+    <view v-if="loading" class="loading-state">正在同步订阅数据...</view>
+    <template v-else>
+    <view v-if="missingRates" class="data-warning">部分外币汇率暂不可用，相关金额未计入合计</view>
     <view class="section-label">总览</view>
     <view class="hero-card">
       <view class="hero-side">
@@ -9,7 +12,7 @@
       <view class="hero-divider"></view>
       <view class="hero-side">
         <text class="hero-amount">{{ formatCurrency(monthlyDisplay, 'CNY', amountsHidden) }}</text>
-        <text class="hero-desc">本月支出</text>
+        <text class="hero-desc">本月预计</text>
       </view>
       <view class="hero-glow"></view>
     </view>
@@ -59,6 +62,7 @@
     </view>
 
     <button class="primary-button" @click="$emit('open-add')">+ 添加订阅</button>
+    </template>
   </scroll-view>
 </template>
 
@@ -86,7 +90,7 @@ export default {
   props: {
     summary: {
       type: Object,
-      default: () => ({ monthlyTotal: 0, yearlyTotal: 0, nextMonthTotal: 0 })
+      default: () => ({ currentMonthTotal: 0, monthlyTotal: 0, yearlyTotal: 0, nextMonthTotal: 0 })
     },
     upcomingList: {
       type: Array,
@@ -99,6 +103,14 @@ export default {
     health: {
       type: Object,
       default: () => ({ score: 0, suggestions: [] })
+    },
+    loading: {
+      type: Boolean,
+      default: false
+    },
+    missingRates: {
+      type: Boolean,
+      default: false
     }
   },
   emits: ['open-add', 'toggle-amount', 'open-detail', 'open-detail-suggestions'],
@@ -123,7 +135,7 @@ export default {
         this.animateNumber('nextMonthDisplay', value)
       }
     },
-    'summary.monthlyTotal': {
+    'summary.currentMonthTotal': {
       immediate: true,
       handler(value) {
         this.animateNumber('monthlyDisplay', value)
@@ -132,7 +144,7 @@ export default {
     amountsHidden() {
       // 隐藏/显示切换时直接同步目标值，不做动画
       this.nextMonthDisplay = this.summary.nextMonthTotal
-      this.monthlyDisplay = this.summary.monthlyTotal
+      this.monthlyDisplay = this.summary.currentMonthTotal
     }
   },
   beforeUnmount() {
@@ -192,6 +204,25 @@ export default {
   font-weight: 600;
   color: var(--text-tertiary);
   letter-spacing: 1.2rpx;
+}
+
+.loading-state,
+.data-warning {
+  margin-bottom: 24rpx;
+  padding: 24rpx 28rpx;
+  border-radius: var(--radius-control);
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.loading-state {
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+}
+
+.data-warning {
+  color: var(--warning);
+  background: var(--warning-light);
 }
 
 .hero-card {

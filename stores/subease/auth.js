@@ -255,7 +255,11 @@ export const useSubeaseAuthStore = defineStore('subeaseAuth', {
       if (!force && this.accessToken) {
         const tokenExpired = isAccessTokenExpired(this.accessToken)
         if (!tokenExpired) {
-          if (!this.userInfo) {
+          const needsUserRefresh =
+            !this.userInfo ||
+            this.userInfo.defaultRemindDays == null ||
+            this.userInfo.subscribeRemain == null
+          if (needsUserRefresh) {
             try {
               await this.fetchCurrentUser()
             } catch (error) {

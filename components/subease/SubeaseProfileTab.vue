@@ -50,8 +50,11 @@
         </view>
       </view>
       <view v-if="loggedIn" class="settings-row" @click="$emit('subscribe')">
-        <text class="settings-left">开启到期提醒推送</text>
-        <view class="settings-arrow"></view>
+        <text class="settings-left">授权 1 次到期提醒</text>
+        <view class="settings-right">
+          <text>剩余 {{ reminderRemain }} 次</text>
+          <view class="settings-arrow"></view>
+        </view>
       </view>
       <view v-if="loggedIn" class="settings-row" @click="$emit('action', '我的反馈')">
         <text class="settings-left">我的反馈</text>
@@ -111,6 +114,10 @@ export default {
     syncProfileLoading: {
       type: Boolean,
       default: false
+    },
+    reminderRemain: {
+      type: Number,
+      default: 0
     }
   },
   emits: ['request-login', 'logout', 'action', 'change-remind-days', 'sync-profile', 'subscribe']

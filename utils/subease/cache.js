@@ -5,6 +5,8 @@ import { MAX_CUSTOM_CATEGORIES } from './constants'
 const SUBSCRIPTIONS_CACHE_KEY = 'subease-subscriptions-cache'
 const RATES_CACHE_KEY = 'subease-rates-cache'
 const CUSTOM_CATEGORIES_KEY = 'subease-custom-categories'
+const AMOUNTS_HIDDEN_KEY = 'subease-amounts-hidden'
+const AUTH_STORAGE_KEY = 'subease-auth'
 const RATES_MAX_AGE = 24 * 60 * 60 * 1000
 
 function safeParse(raw) {
@@ -19,12 +21,18 @@ function safeParse(raw) {
 export function loadSubscriptionsCache() {
   const data = safeParse(uni.getStorageSync(SUBSCRIPTIONS_CACHE_KEY))
   if (!data || !Array.isArray(data.list)) return null
+  const auth = safeParse(uni.getStorageSync(AUTH_STORAGE_KEY))
+  const currentUserId = Number(auth?.userInfo?.id || 0)
+  if (!currentUserId || Number(data.userId || 0) !== currentUserId) return null
   return data.list
 }
 
 export function saveSubscriptionsCache(list) {
   try {
-    uni.setStorageSync(SUBSCRIPTIONS_CACHE_KEY, { list, savedAt: Date.now() })
+    const auth = safeParse(uni.getStorageSync(AUTH_STORAGE_KEY))
+    const userId = Number(auth?.userInfo?.id || 0)
+    if (!userId) return
+    uni.setStorageSync(SUBSCRIPTIONS_CACHE_KEY, { userId, list, savedAt: Date.now() })
   } catch {
     // 存储满等场景静默失败
   }
@@ -33,6 +41,22 @@ export function saveSubscriptionsCache(list) {
 export function clearSubscriptionsCache() {
   try {
     uni.removeStorageSync(SUBSCRIPTIONS_CACHE_KEY)
+  } catch {
+    // ignore
+  }
+}
+
+export function loadAmountsHidden() {
+  try {
+    return Boolean(uni.getStorageSync(AMOUNTS_HIDDEN_KEY))
+  } catch {
+    return false
+  }
+}
+
+export function saveAmountsHidden(hidden) {
+  try {
+    uni.setStorageSync(AMOUNTS_HIDDEN_KEY, hidden ? 1 : 0)
   } catch {
     // ignore
   }

@@ -48,13 +48,12 @@ function todayStart() {
 }
 
 // 月份加减，处理月末溢出：1/31 +1月 → 2/28/29 而非 3/3
-function addMonthsClamped(date, months) {
+function addMonthsClamped(date, months, anchorDay = date.getDate()) {
   const result = new Date(date)
-  const day = result.getDate()
   result.setDate(1)
   result.setMonth(result.getMonth() + months)
   const lastDay = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate()
-  result.setDate(Math.min(day, lastDay))
+  result.setDate(Math.min(anchorDay, lastDay))
   return result
 }
 
@@ -82,12 +81,13 @@ function getActualPaymentEvents(item, startDate, endDate, rates = {}) {
 
   if (item.autoRenew) {
     let nextDate = parseDate(item.displayDate || item.nextDate)
+    const anchorDay = nextDate.getDate()
     let guard = 0
     while (nextDate < endDate && guard < 120) {
       if (nextDate >= startDate) {
         events.push({ date: nextDate, amount })
       }
-      nextDate = addMonthsClamped(nextDate, cycleMonths)
+      nextDate = addMonthsClamped(nextDate, cycleMonths, anchorDay)
       guard += 1
     }
   }
@@ -114,8 +114,19 @@ export function formatCurrency(price, currency, hideAmount = false) {
 
 // 统一折算 CNY（模块级单例，供统计复用）
 function toCny(price, currency, rates) {
-  const rate = Number(rates[String(currency || 'CNY').toUpperCase()]) || 1
+  const code = String(currency || 'CNY').toUpperCase()
+  if (code === 'CNY') return Number(price || 0)
+  const rate = Number((rates || {})[code])
+  if (!Number.isFinite(rate) || rate <= 0) return 0
   return Number(price || 0) * rate
+}
+
+export function hasMissingRates(subscriptions, rates = {}) {
+  return (Array.isArray(subscriptions) ? subscriptions : []).some((item) => {
+    const code = String(item.currency || 'CNY').toUpperCase()
+    const rate = Number((rates || {})[code])
+    return code !== 'CNY' && (!Number.isFinite(rate) || rate <= 0)
+  })
 }
 
 // ═══ 到期日滚动：订阅过期后自动续算到下一周期 ═══
@@ -127,10 +138,11 @@ function toCny(price, currency, rates) {
 export function rollNextDate(dateString, cycle, today = new Date()) {
   const months = CYCLE_MONTHS_MAP[cycle] || 1
   let date = parseDate(dateString)
+  const anchorDay = date.getDate()
   const todayStartDate = new Date(today.getFullYear(), today.getMonth(), today.getDate())
   let guard = 0
   while (date < todayStartDate && guard < 60) {
-    date = addMonthsClamped(date, months)
+    date = addMonthsClamped(date, months, anchorDay)
     guard += 1
   }
   return formatDateString(date)
@@ -270,9 +282,6 @@ export function getSummaryStats(subscriptions, rates = {}) {
     list.reduce((sum, item) => {
       if (item.status === 'expired') return sum
       const nextDate = parseDate(item.displayDate || item.nextDate)
-      const rawNextDate = parseDate(item.nextDate || item.displayDate)
-      const paidCycles = Number(item.paidCycles) || 1
-      if (paidCycles > 1 && rawNextDate >= nextMonthStart) return sum
 
       // 当前月已到期的月付订阅，下一次扣款会落在下个月；其他周期按周期顺延。
       const nextMonthDueDate = nextDate >= nextMonthStart
@@ -286,6 +295,7 @@ export function getSummaryStats(subscriptions, rates = {}) {
   )
 
   return {
+    currentMonthTotal: (getMonthlyTrend(list, rates, 1)[0] || {}).amount || 0,
     monthlyTotal: roundMoney(monthlyTotal),
     yearlyTotal: roundMoney(yearlyTotal),
     nextMonthTotal
@@ -294,17 +304,25 @@ export function getSummaryStats(subscriptions, rates = {}) {
 
 export function getAnalyticsSummary(subscriptions, rates = {}) {
   const list = Array.isArray(subscriptions) ? subscriptions : []
+  const activeList = list.filter((item) => item.status !== 'expired')
 
   // 月均/年度支出（复用 getSummaryStats 的折算逻辑）
-  const { monthlyTotal, yearlyTotal, nextMonthTotal } = getSummaryStats(list, rates)
+  const { currentMonthTotal, monthlyTotal, yearlyTotal, nextMonthTotal } = getSummaryStats(list, rates)
 
-  // 总支出：全部折算 CNY（避免多币种直接相加）
-  const totalSpend = roundMoney(list.reduce((sum, item) => sum + toCny(item.price, item.currency, rates), 0))
+  // 本月预计支出：优先使用明确的上次扣款记录，其余按周期推算。
+  const totalSpend = currentMonthTotal
 
-  // 分类支出分布（按金额降序）
-  const categoryMap = list.reduce((map, item) => {
+  const monthlyCost = (item) => {
+    const cny = toCny(item.price, item.currency, rates)
+    if (item.cycle === '季度付') return cny / 3
+    if (item.cycle === '年付') return cny / 12
+    return cny
+  }
+
+  // 分类月均支出分布（仅统计仍有效的订阅，按金额降序）
+  const categoryMap = activeList.reduce((map, item) => {
     const key = item.category || '其他'
-    map[key] = (map[key] || 0) + toCny(item.price, item.currency, rates)
+    map[key] = (map[key] || 0) + monthlyCost(item)
     return map
   }, {})
   const categoryStats = Object.keys(categoryMap)
@@ -318,32 +336,23 @@ export function getAnalyticsSummary(subscriptions, rates = {}) {
   const hottestCategory = categoryStats.length ? categoryStats[0].category : '暂无'
   const hottestCategoryAmount = categoryStats.length ? categoryStats[0].amount : 0
 
-  // 周期分布（金额占比）
-  const cycleMap = list.reduce((map, item) => {
+  // 周期分布（订阅数量占比）
+  const cycleMap = activeList.reduce((map, item) => {
     const key = item.cycle || '其他'
-    map[key] = map[key] || { count: 0, amount: 0 }
-    map[key].count += 1
-    map[key].amount += toCny(item.price, item.currency, rates)
+    map[key] = (map[key] || 0) + 1
     return map
   }, {})
   const cycleStats = Object.keys(cycleMap).map((cycle) => ({
     cycle,
-    count: cycleMap[cycle].count,
-    amount: roundMoney(cycleMap[cycle].amount)
+    count: cycleMap[cycle]
   }))
-  const cycleTotal = cycleStats.reduce((sum, item) => sum + item.amount, 0)
+  const cycleTotal = cycleStats.reduce((sum, item) => sum + item.count, 0)
   cycleStats.forEach((item) => {
-    item.percent = cycleTotal ? Math.round((item.amount / cycleTotal) * 100) : 0
+    item.percent = cycleTotal ? Math.round((item.count / cycleTotal) * 100) : 0
   })
 
   // 高消费排行：按月均成本（折算 CNY）降序取前 5
-  const monthlyCost = (item) => {
-    const cny = toCny(item.price, item.currency, rates)
-    if (item.cycle === '季度付') return cny / 3
-    if (item.cycle === '年付') return cny / 12
-    return cny
-  }
-  const topSpenders = list
+  const topSpenders = activeList
     .map((item) => ({
       name: item.name,
       price: Number(item.price || 0),
@@ -358,7 +367,7 @@ export function getAnalyticsSummary(subscriptions, rates = {}) {
     totalSpend,
     monthlyTotal,
     yearlyTotal,
-    count: list.length,
+    count: activeList.length,
     hottestCategory,
     hottestCategoryAmount,
     categoryStats,
@@ -385,7 +394,6 @@ export function getYearlyBreakdown(subscriptions, rates = {}, year = new Date().
   }
 
   list.forEach((item) => {
-    if (item.status === 'expired') return
     const cycleMonths = CYCLE_MONTHS_MAP[item.cycle] || 1
     const amount = toCny(item.price, item.currency, rates)
     if (!amount) return
@@ -396,6 +404,7 @@ export function getYearlyBreakdown(subscriptions, rates = {}, year = new Date().
       })
       return
     }
+    if (item.status === 'expired') return
     const isAutoRenew = !!item.autoRenew
     const anchor = parseDate(item.displayDate || item.nextDate)
     const anchorIndex = anchor.getFullYear() * 12 + anchor.getMonth()
@@ -419,7 +428,6 @@ export function getYearlyBreakdown(subscriptions, rates = {}, year = new Date().
   // TOP 订阅：按年内实际/估算扣款总额
   const topMap = {}
   list.forEach((item) => {
-    if (item.status === 'expired') return
     const actualEvents = getActualPaymentEvents(item, yearStart, yearEnd, rates)
     if (actualEvents) {
       const actualTotal = actualEvents.reduce((sum, event) => sum + event.amount, 0)
@@ -429,6 +437,7 @@ export function getYearlyBreakdown(subscriptions, rates = {}, year = new Date().
       }
       return
     }
+    if (item.status === 'expired') return
     const cycleMonths = CYCLE_MONTHS_MAP[item.cycle] || 1
     const isAutoRenew = !!item.autoRenew
     const anchor = parseDate(item.displayDate || item.nextDate)
@@ -604,9 +613,16 @@ export function getWeekExpense(subscriptions, rates = {}) {
   let total = 0
   let count = 0
   list.forEach((item) => {
+    const actualEvents = getActualPaymentEvents(item, monday, sundayEnd, rates)
+    if (actualEvents) {
+      total += actualEvents.reduce((sum, event) => sum + event.amount, 0)
+      count += actualEvents.length
+      return
+    }
     if (item.status === 'expired') return
-    const date = parseDate(item.displayDate || item.nextDate)
-    if (date >= monday && date < sundayEnd) {
+    const candidates = [item.nextDate, item.displayDate].filter(Boolean).map(parseDate)
+    const date = candidates.find((value) => value >= monday && value < sundayEnd)
+    if (date) {
       total += toCny(item.price, item.currency, rates)
       count += 1
     }
@@ -707,12 +723,16 @@ export function mergeCustomCategories(storedCategories, subscriptions, defaultCa
 
 // ═══ 批量导入：CSV 文本解析（纯函数）═══
 // 支持两种格式：
-// 1) 导出格式（含表头，9 列）：名称,金额,货币,分类,周期,下次付款日,支付方式,自动续费,备注
+// 1) 导出格式（含表头，12 列；兼容旧版 9 列）：名称,金额,货币,分类,周期,下次付款日,
+//    上次扣款日,预付周期数,提醒天数,支付方式,自动续费,备注
 //    「导出数据」生成的 CSV 可直接粘贴导入，实现导出→导入闭环
 // 2) 简单格式（无表头，7 列）：名称,金额,货币,周期,分类,自动续费,下次付款日
 // 自动续费取值：是/否、1/0、true/false、y/n；空默认 true
 
-const EXPORT_HEADERS = ['名称', '金额', '货币', '分类', '周期', '下次付款日', '支付方式', '自动续费', '备注']
+const EXPORT_HEADERS = [
+  '名称', '金额', '货币', '分类', '周期', '下次付款日',
+  '上次扣款日', '预付周期数', '提醒天数', '支付方式', '自动续费', '备注'
+]
 
 function parseCsvLine(line) {
   const fields = []
@@ -770,14 +790,15 @@ export function parseSubscriptionsCsv(text) {
 
   const headerIndexes = {}
   if (isHeader) {
-    EXPORT_HEADERS.forEach((header, index) => {
-      headerIndexes[header] = index
+    firstRow.forEach((header, index) => {
+      headerIndexes[String(header || '').trim()] = index
     })
   }
 
   const dataRows = isHeader ? rows.slice(1) : rows
   const valid = []
   const errors = []
+  const seenNames = new Set()
 
   dataRows.forEach((fields, rowOffset) => {
     const lineNo = (isHeader ? 1 : 0) + rowOffset + 1
@@ -789,6 +810,9 @@ export function parseSubscriptionsCsv(text) {
     let category = '其他'
     let autoRenew = true
     let nextDate = ''
+    let lastPaidDate = ''
+    let paidCycles = 1
+    let remindDays = 3
     let method = ''
     let notes = ''
 
@@ -799,6 +823,9 @@ export function parseSubscriptionsCsv(text) {
       category = String(fields[headerIndexes['分类']] || '').trim() || '其他'
       cycle = String(fields[headerIndexes['周期']] || '月付').trim()
       nextDate = String(fields[headerIndexes['下次付款日']] || '').trim()
+      lastPaidDate = String(fields[headerIndexes['上次扣款日']] || '').trim()
+      paidCycles = Number(fields[headerIndexes['预付周期数']] || 1)
+      remindDays = Number(fields[headerIndexes['提醒天数']] || 3)
       method = String(fields[headerIndexes['支付方式']] || '').trim()
       notes = String(fields[headerIndexes['备注']] || '').trim()
       const ar = normalizeAutoRenew(fields[headerIndexes['自动续费']])
@@ -835,6 +862,32 @@ export function parseSubscriptionsCsv(text) {
       errors.push(`第 ${lineNo} 行「${name}」周期无效（月付/季度付/年付）`)
       return
     }
+    if (!['CNY', 'USD', 'EUR', 'JPY', 'GBP', 'HKD', 'KRW', 'AUD'].includes(currency)) {
+      errors.push(`第 ${lineNo} 行「${name}」货币无效`)
+      return
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate || '') || formatDateString(parseDate(nextDate)) !== nextDate) {
+      errors.push(`第 ${lineNo} 行「${name}」付款日期无效`)
+      return
+    }
+    if (lastPaidDate && (!/^\d{4}-\d{2}-\d{2}$/.test(lastPaidDate) || formatDateString(parseDate(lastPaidDate)) !== lastPaidDate)) {
+      errors.push(`第 ${lineNo} 行「${name}」上次扣款日期无效`)
+      return
+    }
+    if (!Number.isInteger(paidCycles) || paidCycles < 1 || paidCycles > 120) {
+      errors.push(`第 ${lineNo} 行「${name}」预付周期数无效`)
+      return
+    }
+    if (!Number.isInteger(remindDays) || remindDays < 0 || remindDays > 365) {
+      errors.push(`第 ${lineNo} 行「${name}」提醒天数无效`)
+      return
+    }
+    const nameKey = name.toLowerCase()
+    if (seenNames.has(nameKey)) {
+      errors.push(`第 ${lineNo} 行「${name}」与文件内其他订阅重名`)
+      return
+    }
+    seenNames.add(nameKey)
     valid.push({
       name,
       price: Math.round(price * 100) / 100,
@@ -842,7 +895,10 @@ export function parseSubscriptionsCsv(text) {
       cycle,
       category,
       autoRenew,
-      nextDate: nextDate && /^\d{4}-\d{2}-\d{2}$/.test(nextDate) ? nextDate : formatDateString(new Date()),
+      nextDate,
+      lastPaidDate,
+      paidCycles,
+      remindDays,
       method,
       notes
     })

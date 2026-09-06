@@ -2,8 +2,8 @@
     "name" : "SubEase",
     "appid" : "__UNI__370BBEE",
     "description" : "",
-    "versionName" : "1.1.2",
-    "versionCode" : "112",
+    "versionName" : "1.2.0",
+    "versionCode" : "120",
     "transformPx" : false,
     /* 5+App特有相关 */
     "app-plus" : {

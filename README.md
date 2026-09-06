@@ -7,18 +7,18 @@
 - **微信登录**：`wx.login` 静默登录 + 头像昵称表单完善资料（两段式，资料缺失自动回补）
 - **订阅管理**：增删改查、分类/周期筛选、搜索排序、多选批量删除、到期自动续算（过期自动滚动到下一周期）
 - **热门订阅预设库**：内置 30+ 常见订阅一键添加，支持搜索
-- **批量导入**：支持直接粘贴「导出数据」生成的 CSV（含表头），解析预览、重名自动跳过后批量创建
+- **批量导入**：支持直接粘贴「导出数据」生成的 CSV（含表头），整批校验、事务写入、重名自动跳过
 - **到期提醒**：微信订阅消息推送（一次性授权，可配置提前 N 天提醒）
 - **订阅健康分**：按过期/自动续费占比/重复分类等评分，给出省钱建议
 - **汇率折算**：接入实时汇率（open.er-api.com），支持 USD/EUR 等多币种统一按 CNY 汇总
-- **支出分析**：总支出/月均/年度、本周支出、近 6 月趋势、分类与周期分布、高消费排行、下月扣款预测
+- **支出分析**：本月/月均/年度预计、本周支出、近 6 月趋势、分类与周期分布、高消费排行、下月扣款预测
 - **年度账单报告**：全年支出分布、月度柱状图、TOP 订阅，支持一键分享
-- **数据导出**：服务器生成 CSV 文件 → 小程序下载（Android 直接保存 / iOS 打开另存），带鉴权与越权防护，30 分钟有效
+- **数据导出**：支持可重新导入的 CSV 与 Excel 文件（Android 直接保存 / iOS 打开另存），30 分钟有效
 - **反馈闭环**：提交反馈 → 后台处理 → 回复与未读标记
 - **轻量埋点**：启动/登录/订阅增删/反馈/导出等关键行为静默上报
 - **隐私合规**：内置用户协议与隐私政策页面
 - **深色模式**：跟随系统外观自动切换
-- **本地缓存**：订阅列表与汇率本地缓存，弱网/离线可用
+- **本地缓存**：订阅列表按账号隔离缓存，汇率本地缓存，弱网/离线可用
 
 ## 技术栈
 
@@ -57,13 +57,13 @@ SubEase/
 
 ### 1. 运行后端
 
-归期本依赖 [levi-blog-service](../../levi-blog-service)（多项目共用后端服务）。
+归期本依赖独立后端 [subease-server-service](../../subease-server-service)。
 
 ```bash
-cd levi-blog-service
+cd subease-server-service
 npm install
 # 在 .env 中配置数据库、JWT 与微信凭据（见下方"后端环境变量"）
-npm start        # 或 node app.js（默认 3000 端口）
+npm start        # 开发模式，默认 3001 端口
 ```
 
 ### 2. 运行小程序
@@ -71,11 +71,11 @@ npm start        # 或 node app.js（默认 3000 端口）
 1. 使用 **HBuilderX** 打开本目录（`uni-app/SubEase`）
 2. 菜单 `运行 → 运行到小程序模拟器 → 微信开发者工具`
 3. 首次需在微信公众平台配置：
-   - 小程序 AppID 与 `secret`（配置在 `levi-blog-service/.env`）
+   - 小程序 AppID 与 `secret`（配置在 `subease-server-service/.env`）
    - 订阅消息模板（类目"记账"，模板 ID 见 `utils/subease/config.js`）
-   - request / uploadFile / downloadFile 合法域名（线上 `https://api.leviqin.top`）
+   - request / uploadFile / downloadFile 合法域名（线上 `https://seapi.leviqin.top`）
 
-> 开发者工具中默认请求本地 `http://127.0.0.1:3000/api`；真机与线上请求 `https://api.leviqin.top/api`。如需切换，可在小程序内修改 `utils/subease/config.js` 或存储键 `subease-api-base-url`。
+> 开发者工具中默认请求本地 `http://127.0.0.1:3001/api`；真机与线上请求 `https://seapi.leviqin.top/api`。如需切换，可在小程序内修改 `utils/subease/config.js` 或存储键 `subease-api-base-url`。
 
 ### 3. 运行管理端
 
@@ -85,7 +85,7 @@ npm install
 npm run dev
 ```
 
-## 后端环境变量（levi-blog-service/.env）
+## 后端环境变量（subease-server-service/.env）
 
 | 变量 | 说明 |
 |------|------|
@@ -105,14 +105,14 @@ npm run dev
 
 ## 每周支出回顾推送
 
-前端授权入口（「我的 → 开启每周支出回顾推送」）+ 后端定时任务（`core/scheduler.js` 每周一 09:00）均已实现，启用只需两步：
+后端定时任务（`core/scheduler.js` 每周一 09:00）已实现；前端入口暂未开放。完整启用需完成以下配置并补齐前端授权入口：
 
 1. 在微信公众平台申请"周报/服务提醒"类订阅消息模板（字段：thing1 概况 / amount2 金额 / time3 统计周期）
 2. 将模板 ID 同时填入：
-   - 后端 `levi-blog-service/.env` → `SUBEASE_WEEKLY_TEMPLATE_ID`
+   - 后端 `subease-server-service/.env` → `SUBEASE_WEEKLY_TEMPLATE_ID`
    - 前端 `utils/subease/config.js` → `WEEKLY_REVIEW_TEMPLATE_ID`
 
-推送逻辑：上周一至周日 `next_date` 落在区间内的订阅按用户聚合（汇率折算 CNY），对已授权且有余量的用户推送；`subease_weekly_logs` 表按 (user_id, week_start) 唯一键防重复；`weekly_subscribe_remain` 记录剩余可推送次数（与到期提醒额度独立）。
+推送逻辑：上周一至周日 `last_paid_date` 落在区间内的扣款按用户聚合（预付周期计入本次金额，汇率折算 CNY），对已授权且有余量的用户推送；`subease_weekly_logs` 表按 (user_id, week_start) 唯一键防重复；`weekly_subscribe_remain` 记录剩余可推送次数（与到期提醒额度独立）。
 
 ## License
 

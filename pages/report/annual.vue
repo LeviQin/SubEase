@@ -1,6 +1,8 @@
 <template>
   <view class="annual-page">
-    <template v-if="report">
+    <view v-if="loading" class="loading">正在生成年度账单...</view>
+    <template v-else-if="report">
+      <view v-if="missingRates" class="data-warning">部分外币汇率暂不可用，相关金额未计入报告</view>
       <view class="hero">
         <text class="hero-year">{{ report.year }}</text>
         <text class="hero-title">年度订阅账单</text>
@@ -26,8 +28,8 @@
       <view class="section-label">月度支出分布</view>
       <view class="chart-card">
         <view class="chart-bars">
-          <view v-for="month in report.months" :key="month.key" class="chart-bar-wrap">
-            <text class="chart-value">{{ month.amount > 0 ? formatCurrency(month.amount, 'CNY') : '' }}</text>
+          <view v-for="month in report.months" :key="month.key" class="chart-bar-wrap" @click="showMonthDetail(month)">
+            <text class="chart-value"></text>
             <view class="chart-bar-track">
               <view
                 class="chart-bar-fill"
@@ -61,14 +63,17 @@
 </template>
 
 <script>
-import { formatCurrency, normalizeSubscriptions, getYearlyBreakdown } from '@/utils/subease/helpers'
-import { loadSubscriptionsCache, loadRatesCache } from '@/utils/subease/cache'
+import { formatCurrency as formatMoney, normalizeSubscriptions, getYearlyBreakdown, hasMissingRates } from '@/utils/subease/helpers'
+import { loadSubscriptionsCache, loadRatesCache, loadAmountsHidden, saveRatesCache } from '@/utils/subease/cache'
+import { getCurrencyRates } from '@/api/subease/rates'
 
 export default {
   data() {
     return {
       report: null,
-      loading: true
+      loading: true,
+      amountsHidden: loadAmountsHidden(),
+      missingRates: false
     }
   },
   onLoad() {
@@ -76,30 +81,44 @@ export default {
   },
   onShareAppMessage() {
     const year = this.report ? this.report.year : new Date().getFullYear()
-    const total = this.report ? formatCurrency(this.report.total, 'CNY') : '¥0'
     return {
-      title: `我 ${year} 年在订阅上花了 ${total}，你呢？`,
+      title: this.amountsHidden
+        ? `我的 ${year} 年订阅账单`
+        : `我 ${year} 年在订阅上花了 ${this.report ? formatMoney(this.report.total, 'CNY') : '¥0'}，你呢？`,
       path: '/pages/index/index'
     }
   },
   onShareTimeline() {
     const year = this.report ? this.report.year : new Date().getFullYear()
-    const total = this.report ? formatCurrency(this.report.total, 'CNY') : '¥0'
     return {
-      title: `${year} 订阅账单：我花了 ${total}`
+      title: this.amountsHidden
+        ? `${year} 年订阅账单`
+        : `${year} 订阅账单：我花了 ${this.report ? formatMoney(this.report.total, 'CNY') : '¥0'}`
     }
   },
   methods: {
-    formatCurrency,
-    buildReport() {
+    formatCurrency(price, currency) {
+      return formatMoney(price, currency, this.amountsHidden)
+    },
+    async buildReport() {
       try {
         const cached = loadSubscriptionsCache()
-        const rates = loadRatesCache() || {}
         if (!cached || !cached.length) {
           this.report = null
           return
         }
+        let rates = loadRatesCache()
+        if (!rates) {
+          try {
+            rates = await getCurrencyRates()
+            rates = rates || {}
+            saveRatesCache(rates)
+          } catch {
+            rates = {}
+          }
+        }
         const normalized = normalizeSubscriptions(cached)
+        this.missingRates = hasMissingRates(normalized, rates || {})
         this.report = getYearlyBreakdown(normalized, rates)
       } catch (error) {
         console.error('[AnnualReport] 生成年度报告失败', error)
@@ -113,6 +132,14 @@ export default {
       if (!amount || !max) return '8%'
       const ratio = Math.max(Number(amount) / max, 0.1)
       return `${Math.round(ratio * 100)}%`
+    },
+    showMonthDetail(month) {
+      uni.showModal({
+        title: month.label,
+        content: this.amountsHidden ? '金额已隐藏' : `支出 ${formatMoney(month.amount, 'CNY')}`,
+        showCancel: false,
+        confirmText: '知道了'
+      })
     }
   }
 }
@@ -124,6 +151,25 @@ export default {
   padding: 40rpx 36rpx calc(60rpx + env(safe-area-inset-bottom, 0px));
   background: var(--app-bg);
   box-sizing: border-box;
+}
+
+.loading,
+.data-warning {
+  padding: 28rpx;
+  border-radius: var(--radius-control);
+  font-size: 25rpx;
+  line-height: 1.5;
+}
+
+.loading {
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+}
+
+.data-warning {
+  margin-bottom: 24rpx;
+  color: var(--warning);
+  background: var(--warning-light);
 }
 
 .hero {

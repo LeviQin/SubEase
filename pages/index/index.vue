@@ -11,6 +11,8 @@
         :upcoming-list="upcomingList"
         :health="health"
         :amounts-hidden="amountsHidden"
+        :loading="dataLoading && !subscriptions.length"
+        :missing-rates="missingRates"
         @toggle-amount="toggleAmountVisibility"
         @open-add="openAddSheet()"
         @open-detail="openDetailSheet"
@@ -43,6 +45,8 @@
         :monthly-trend="monthlyTrend"
         :week-expense="weekExpense"
         :amounts-hidden="amountsHidden"
+        :loading="dataLoading && !subscriptions.length"
+        :missing-rates="missingRates"
       />
 
       <SubeaseProfileTab
@@ -52,6 +56,7 @@
         :settings-remind-days="settingsRemindDays"
         :remind-days-label="profileRemindDaysLabel"
         :sync-profile-loading="syncProfileLoading"
+        :reminder-remain="profileReminderRemain"
         @request-login="openLoginSheet"
         @logout="logout"
         @sync-profile="openSyncProfileSheet"
@@ -263,7 +268,15 @@
         </view>
         <template v-else>
           <view class="export-tip-wrap">
-            <text class="export-tip">将当前全部 {{ subscriptions.length }} 条订阅导出为 Excel 文件（仅本人可下载，30 分钟内有效）。</text>
+            <text class="export-tip">将当前全部 {{ subscriptions.length }} 条订阅导出（仅本人可下载，30 分钟内有效）。</text>
+            <view class="option-group export-format-options">
+              <view
+                v-for="item in exportFormatOptions"
+                :key="item.value"
+                :class="['option-chip', exportFormat === item.value ? 'is-active' : '']"
+                @click="exportFormat = item.value"
+              >{{ item.label }}</view>
+            </view>
             <text class="export-tip-sub">Android 将直接保存到手机文件；iOS 打开后点击右上角菜单选择保存。</text>
           </view>
         </template>
@@ -316,8 +329,8 @@
 
       <template v-else-if="sheetState.type === 'import'">
         <view class="import-tip">支持直接粘贴「导出数据」生成的 CSV，或按模板填写：</view>
-        <view class="import-example">名称,金额,货币,分类,周期,下次付款日,支付方式,自动续费,备注</view>
-        <view class="import-example">Netflix,68,CNY,视频,月付,2026-09-01,微信,是,</view>
+        <view class="import-example">名称,金额,货币,分类,周期,下次付款日,上次扣款日,预付周期数,提醒天数,支付方式,自动续费,备注</view>
+        <view class="import-example">Netflix,68,CNY,视频,月付,2026-10-01,2026-09-01,1,3,微信,是,</view>
         <textarea
           class="import-textarea"
           :value="importText"
@@ -388,6 +401,7 @@ import {
   getUpcomingSubscriptions,
   getVisibleSubscriptions,
   getWeekExpense,
+  hasMissingRates,
   normalizeSubscriptions,
   parseSubscriptionsCsv,
   applyCategoryChangeToSubscriptions,
@@ -403,7 +417,9 @@ import {
   saveCustomCategories,
   saveRatesCache,
   saveSubscriptionsCache,
-  clearSubscriptionsCache
+  clearSubscriptionsCache,
+  loadAmountsHidden,
+  saveAmountsHidden
 } from '@/utils/subease/cache'
 import { CATEGORY_OPTIONS, CURRENCY_OPTIONS, DEFAULT_PROFILE, MAX_CUSTOM_CATEGORIES, POPULAR_SUBSCRIPTIONS } from '@/utils/subease/constants'
 import { createEmptyFormState, createInitialState } from '@/utils/subease/state'
@@ -415,7 +431,9 @@ import {
   updateSubscription,
   deleteSubscription,
   batchDeleteSubscriptions,
+  batchImportSubscriptions,
   batchUpdateCategory,
+  updateDefaultRemindDays,
   requestExport
 } from '@/api/subease/subscription'
 import { getFeedbackList, markFeedbackRead as markFeedbackReadApi, submitFeedback } from '@/api/subease/feedback'
@@ -449,6 +467,7 @@ export default {
       remindDaysOptions: [1, 3, 7, 15, 30],
       settingsRemindDays: this._loadRemindDays(),
       settingsPickerKey: '',
+      settingsPickerLoading: false,
       toastTimer: null,
       loginTimeoutId: null,
       statusBarHeight: 0,
@@ -468,6 +487,7 @@ export default {
         avatarPreviewUrl: ''
       },
       rates: {},
+      amountsHidden: loadAmountsHidden(),
       feedbackList: [],
       myFeedbacksLoading: false,
       exportData: {
@@ -475,6 +495,11 @@ export default {
         url: ''
       },
       exportLoading: false,
+      exportFormat: 'csv',
+      exportFormatOptions: [
+        { value: 'csv', label: 'CSV（可重新导入）' },
+        { value: 'xlsx', label: 'Excel' }
+      ],
       importText: '',
       importPreview: null,
       importLoading: false
@@ -566,6 +591,13 @@ export default {
     },
     health() {
       return getSubscriptionHealth(this.subscriptions)
+    },
+    missingRates() {
+      return hasMissingRates(this.subscriptions, this.rates)
+    },
+    profileReminderRemain() {
+      const authStore = useSubeaseAuthStore()
+      return Number(authStore.userInfo?.subscribeRemain || 0)
     },
     categoryOptions() {
       // 动态合并：默认分类 + 自定义分类 + 订阅数据中已使用的其他分类（去重保序）
@@ -901,10 +933,21 @@ export default {
         if (cached && cached.length) {
           this.subscriptions = normalizeSubscriptions(cached)
         }
-        const list = await getSubscriptionList()
+        const authStore = useSubeaseAuthStore()
+        const [list] = await Promise.all([
+          getSubscriptionList(),
+          authStore.fetchCurrentUser().catch((error) => {
+            console.warn('[Subease] 刷新提醒额度失败，继续使用本地资料', error.message)
+            return null
+          })
+        ])
         const normalized = normalizeSubscriptions(list || [])
         this.subscriptions = normalized
         saveSubscriptionsCache(normalized)
+        const serverRemindDays = Number(authStore.userInfo?.defaultRemindDays)
+        if (Number.isInteger(serverRemindDays) && serverRemindDays > 0) {
+          this.settingsRemindDays = serverRemindDays
+        }
         // 数据自愈：订阅中使用的非默认分类合并为自定义分类并回写 storage
         this.syncCustomCategoriesFromSubscriptions(normalized)
       } catch (error) {
@@ -936,6 +979,7 @@ export default {
     },
     toggleAmountVisibility() {
       this.amountsHidden = !this.amountsHidden
+      saveAmountsHidden(this.amountsHidden)
     },
     updateSearch(keyword) {
       this.searchKeyword = keyword
@@ -1160,7 +1204,8 @@ export default {
         ? cloneSubscription(current)
         : {
             ...createEmptyFormState(),
-            category: this.filterCategory || '其他'
+            category: this.filterCategory || '其他',
+            remindDays: this.settingsRemindDays
           }
       this.openSheet('form', { id })
     },
@@ -1193,24 +1238,17 @@ export default {
     async confirmImport() {
       if (!this.importPreview || !this.importPreview.valid.length) return
       if (this.importLoading) return
-      // 跳过与现有订阅重名的条目，避免重复数据
-      const existing = new Set(this.subscriptions.map((item) => String(item.name || '').trim().toLowerCase()))
-      const toImport = this.importPreview.valid.filter(
-        (item) => !existing.has(String(item.name || '').trim().toLowerCase())
-      )
-      const skipped = this.importPreview.valid.length - toImport.length
-      if (!toImport.length) {
-        this.showToast('所有条目均与现有订阅重名')
-        return
-      }
       this.importLoading = true
-      let count = 0
       try {
-        for (const item of toImport) {
-          const payload = createSubscriptionPayload({ ...createEmptyFormState(), ...item }, '')
-          await createSubscription(payload)
-          count += 1
-        }
+        const items = this.importPreview.valid.map((item) =>
+          createSubscriptionPayload(
+            { ...createEmptyFormState(), remindDays: this.settingsRemindDays, ...item },
+            ''
+          )
+        )
+        const result = await batchImportSubscriptions(items)
+        const count = Number(result?.imported || 0)
+        const skipped = Number(result?.skipped || 0)
         await this.fetchSubscriptions()
         this.closeSheet()
         this.showToast(`已导入 ${count} 条${skipped ? `，跳过 ${skipped} 条重名` : ''}`)
@@ -1454,9 +1492,10 @@ export default {
     },
     openExportSheet() {
       this.exportData = { filename: '', url: '' }
+      this.exportFormat = 'csv'
       this.openSheet('export')
     },
-    async exportXlsxFile() {
+    async exportDataFile() {
       if (this.exportLoading) return
       if (!this.subscriptions.length) {
         this.showToast('暂无可导出的订阅数据')
@@ -1465,7 +1504,7 @@ export default {
       this.exportLoading = true
       this.exportStatus = '正在生成文件...'
       try {
-        const result = await requestExport()
+        const result = await requestExport(this.exportFormat)
         if (!result || !result.url) throw new Error('导出文件生成失败')
         this.exportData = result
         await this.downloadExportFile(result.url)
@@ -1505,7 +1544,7 @@ export default {
               wx.saveFileToDisk({
                 filePath: tempFilePath,
                 success: () => {
-                  this.showToast('Excel 文件已保存到手机')
+                  this.showToast('导出文件已保存到手机')
                   resolve()
                 },
                 fail: () => {
@@ -1561,10 +1600,15 @@ export default {
           })
         })
         const accepted = res && res[SUBSCRIBE_TEMPLATE_ID] === 'accept'
-        await reportSubscribeGrant(!!accepted, 'reminder')
+        const grant = await reportSubscribeGrant(!!accepted, 'reminder')
         if (accepted) {
+          const authStore = useSubeaseAuthStore()
+          authStore.setUserInfo({
+            ...(authStore.userInfo || {}),
+            subscribeRemain: Number(grant?.remain || 0)
+          })
           track('reminder_optin')
-          this.showToast('到期提醒推送已开启')
+          this.showToast(`已授权 1 次提醒，剩余 ${Number(grant?.remain || 0)} 次`)
         } else {
           this.showToast('未开启推送，可随时在设置中开启')
         }
@@ -1708,17 +1752,37 @@ export default {
           this.closeSheet()
         }
       }
-      else if (key === 'save-export') this.exportXlsxFile()
+      else if (key === 'save-export') this.exportDataFile()
       else if (key === 'import-confirm' && t === 'import') this.confirmImport()
     },
     openRemindDaysSheet() {
       this.settingsPickerKey = 'remind'
       this.openSheet('settings-picker')
     },
-    onSettingsPickerSelect(value) {
+    async onSettingsPickerSelect(value) {
+      if (this.settingsPickerLoading) return
+      this.settingsPickerLoading = true
       if (this.settingsPickerKey === 'remind') {
-        this.settingsRemindDays = value
-        this.showToast(`提前 ${value} 天提醒`)
+        try {
+          if (this.loggedIn) {
+            const result = await updateDefaultRemindDays(value)
+            this.subscriptions = this.subscriptions.map((item) => ({ ...item, remindDays: value }))
+            saveSubscriptionsCache(this.subscriptions)
+            const authStore = useSubeaseAuthStore()
+            authStore.setUserInfo({ ...(authStore.userInfo || {}), defaultRemindDays: value })
+            this.showToast(`已同步 ${Number(result?.updated || 0)} 个订阅`)
+          } else {
+            this.showToast(`新订阅将提前 ${value} 天提醒`)
+          }
+          this.settingsRemindDays = value
+        } catch (error) {
+          this.showToast(error.message || '提醒设置同步失败')
+          return
+        } finally {
+          this.settingsPickerLoading = false
+        }
+      } else {
+        this.settingsPickerLoading = false
       }
       this.closeSheet()
     }
@@ -2441,6 +2505,10 @@ export default {
 
 .export-tip-wrap {
   padding: 8rpx 8rpx 16rpx;
+}
+
+.export-format-options {
+  margin-top: 16rpx;
 }
 
 .export-tip {

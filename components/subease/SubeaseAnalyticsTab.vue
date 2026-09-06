@@ -1,24 +1,26 @@
 <template>
   <scroll-view class="tab-scroll" scroll-y :show-scrollbar="false">
-    <template v-if="analytics.count > 0">
+    <view v-if="loading" class="loading-state">正在计算支出数据...</view>
+    <template v-else-if="analytics.count > 0">
+      <view v-if="missingRates" class="data-warning">部分外币汇率暂不可用，相关金额未计入合计</view>
       <view class="section-label">支出</view>
 
       <view class="metric-row">
         <view class="metric-card">
           <text class="metric-value">{{ formatCurrency(analytics.totalSpend, 'CNY', amountsHidden) }}</text>
-          <text class="metric-label">总支出</text>
+          <text class="metric-label">本月预计</text>
         </view>
         <view class="metric-card">
           <text class="metric-value">{{ formatCurrency(analytics.monthlyTotal, 'CNY', amountsHidden) }}</text>
-          <text class="metric-label">月均支出</text>
+          <text class="metric-label">月均预计</text>
         </view>
         <view class="metric-card">
           <text class="metric-value">{{ formatCurrency(analytics.yearlyTotal, 'CNY', amountsHidden) }}</text>
-          <text class="metric-label">年度支出</text>
+          <text class="metric-label">年度预计</text>
         </view>
         <view class="metric-card">
           <text class="metric-value">{{ analytics.count }}</text>
-          <text class="metric-label">订阅数量</text>
+          <text class="metric-label">有效订阅</text>
         </view>
         <view class="metric-card">
           <text class="metric-value">{{ analytics.hottestCategory }}</text>
@@ -60,7 +62,7 @@
         <text class="trend-note">按订阅周期估算（含本月未到期扣款），点击柱子查看详情</text>
       </view>
 
-      <view class="section-label">分类支出分布</view>
+      <view class="section-label">分类月均支出</view>
       <view class="chart-card" v-if="analytics.categoryStats.length">
         <view v-for="item in analytics.categoryStats" :key="item.category" class="stat-row">
           <text class="stat-label">{{ item.category }}</text>
@@ -131,6 +133,14 @@ export default {
     weekExpense: {
       type: Object,
       default: () => ({ total: 0, count: 0 })
+    },
+    loading: {
+      type: Boolean,
+      default: false
+    },
+    missingRates: {
+      type: Boolean,
+      default: false
     }
   },
   methods: {
@@ -166,6 +176,25 @@ export default {
   font-weight: 600;
   color: var(--text-tertiary);
   letter-spacing: 1.2rpx;
+}
+
+.loading-state,
+.data-warning {
+  margin-bottom: 24rpx;
+  padding: 24rpx 28rpx;
+  border-radius: var(--radius-control);
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.loading-state {
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+}
+
+.data-warning {
+  color: var(--warning);
+  background: var(--warning-light);
 }
 
 .metric-row {
