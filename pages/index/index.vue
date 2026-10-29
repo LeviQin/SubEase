@@ -48,6 +48,8 @@
         :loading="dataLoading && !subscriptions.length"
         :missing-rates="missingRates"
         :estimated-data="analyticsSummary.estimatedData"
+        :budget-status="budgetStatus"
+        :savings-suggestions="savingsSuggestions"
       />
 
       <SubeaseProfileTab
@@ -58,11 +60,13 @@
         :remind-days-label="profileRemindDaysLabel"
         :sync-profile-loading="syncProfileLoading"
         :reminder-remain="profileReminderRemain"
+        :monthly-budget-label="monthlyBudgetLabel"
         @request-login="openLoginSheet"
         @logout="logout"
         @sync-profile="openSyncProfileSheet"
         @action="onProfileAction"
         @change-remind-days="openRemindDaysSheet"
+        @change-budget="openMonthlyBudgetSheet"
         @subscribe="requestSubscribeMessage"
       />
     </view>
@@ -233,6 +237,22 @@
           />
         </view>
         <view class="payment-form-note">付款记录会保存付款时的汇率快照；汇率暂不可用时仍保留原币金额。</view>
+      </template>
+
+      <template v-else-if="sheetState.type === 'monthly-budget'">
+        <view class="budget-form-tip">使用人民币设置本月预算，仅用于支出分析提示，不会限制记录付款。输入 0 或留空可关闭预算。</view>
+        <view class="form-field">
+          <text class="form-label">月度预算（CNY）</text>
+          <input
+            class="form-input"
+            type="digit"
+            maxlength="12"
+            :value="String(budgetForm.value)"
+            placeholder="例如 1000"
+            placeholder-class="form-placeholder"
+            @input="budgetForm.value = $event.detail.value"
+          />
+        </view>
       </template>
 
       <template v-else-if="sheetState.type === 'confirm-delete'">
@@ -468,6 +488,8 @@ import {
   getAnalyticsSummary,
   getDaysUntil,
   getMonthlyTrend,
+  getBudgetStatus,
+  getSavingsSuggestions,
   getSubscriptionHealth,
   getSummaryStats,
   getUpcomingSubscriptions,
@@ -499,7 +521,7 @@ import {
 import { CATEGORY_OPTIONS, CURRENCY_OPTIONS, DEFAULT_PROFILE, MAX_CUSTOM_CATEGORIES, POPULAR_SUBSCRIPTIONS } from '@/utils/subease/constants'
 import { createEmptyFormState, createInitialState } from '@/utils/subease/state'
 import { useSubeaseAuthStore, getWeixinLoginCode } from '@/stores/subease/auth'
-import { updateProfile, wxLogin } from '@/api/subease/auth'
+import { updateProfile, updateMonthlyBudget, wxLogin } from '@/api/subease/auth'
 import {
   getSubscriptionList,
   createSubscription,
@@ -577,6 +599,10 @@ export default {
         paidDate: '',
         amount: '',
         currency: 'CNY'
+      },
+      budgetLoading: false,
+      budgetForm: {
+        value: ''
       },
       amountsHidden: loadAmountsHidden(),
       feedbackList: [],
@@ -691,6 +717,24 @@ export default {
     missingRates() {
       return hasMissingRates(this.subscriptions, this.rates, this.paymentRecords)
     },
+    monthlyBudgetCny() {
+      const authStore = useSubeaseAuthStore()
+      return Math.max(0, Number(authStore.userInfo?.monthlyBudgetCny || 0))
+    },
+    monthlyBudgetLabel() {
+      if (!this.monthlyBudgetCny) return '未设置'
+      return this.amountsHidden ? '***' : formatCurrency(this.monthlyBudgetCny, 'CNY')
+    },
+    budgetStatus() {
+      return getBudgetStatus(
+        this.monthlyBudgetCny,
+        this.analyticsSummary.totalSpend,
+        this.analyticsSummary.estimatedData
+      )
+    },
+    savingsSuggestions() {
+      return getSavingsSuggestions(this.subscriptions, this.analyticsSummary, this.budgetStatus)
+    },
     currentPaymentRecords() {
       const subscriptionId = Number(this.sheetState.payload?.id || this.paymentForm.subscriptionId)
       return this.paymentRecords
@@ -767,6 +811,7 @@ export default {
         detail: this.currentSubscription?.name || '详情',
         'payment-history': `${this.currentSubscription?.name || '订阅'} · 付款历史`,
         'payment-form': this.paymentFormMode === 'edit' ? '编辑付款记录' : '记录付款',
+        'monthly-budget': '月度预算',
         'confirm-delete': '确认删除',
         'batch-delete': '批量删除',
         login: '微信登录',
@@ -873,6 +918,12 @@ export default {
         return [
           { key: 'cancel', text: '取消', type: 'secondary', disabled: this.paymentFormLoading },
           { key: 'payment-save', text: this.paymentFormLoading ? '保存中...' : '保存', type: 'primary', disabled: this.paymentFormLoading }
+        ]
+      }
+      if (t === 'monthly-budget') {
+        return [
+          { key: 'cancel', text: '取消', type: 'secondary', disabled: this.budgetLoading },
+          { key: 'budget-save', text: this.budgetLoading ? '保存中...' : '保存', type: 'primary', disabled: this.budgetLoading }
         ]
       }
       if (t === 'confirm-delete' || t === 'batch-delete') {
@@ -1372,6 +1423,13 @@ export default {
         id: subscriptionId,
         returnTo: this.sheetState.type === 'payment-history' ? 'payment-history' : 'detail'
       })
+    },
+    openMonthlyBudgetSheet() {
+      if (!this.requireLogin() || this.budgetLoading) return
+      this.budgetForm = {
+        value: this.monthlyBudgetCny ? String(this.monthlyBudgetCny) : ''
+      }
+      this.openSheet('monthly-budget')
     },
     onPaymentDateChange(event) {
       this.paymentForm = {
@@ -2037,7 +2095,7 @@ export default {
       else if (key === 'mark-paid' && t === 'detail') this.markCurrentSubscriptionPaid()
       else if (key === 'edit') this.openAddSheet(this.currentSubscription?.id)
       else if (key === 'delete') this.openDeleteSheet(this.currentSubscription?.id)
-      else if (key === 'cancel' && (t === 'confirm-delete' || t === 'batch-delete' || t === 'form' || t === 'feedback' || t === 'profile-sync' || t === 'import' || t === 'payment-form')) this.closeSheet()
+      else if (key === 'cancel' && (t === 'confirm-delete' || t === 'batch-delete' || t === 'form' || t === 'feedback' || t === 'profile-sync' || t === 'import' || t === 'payment-form' || t === 'monthly-budget')) this.closeSheet()
       else if (key === 'delete-confirm' && t === 'confirm-delete') this.confirmDelete()
       else if (key === 'delete-confirm' && t === 'batch-delete') this.confirmBatchDelete()
       else if (key === 'cancel-login' && t === 'login') this.cancelLoginSheet()
@@ -2045,6 +2103,7 @@ export default {
       else if (key === 'submit-wechat-profile' && t === 'profile-sync') this.syncWeChatProfile()
       else if (key === 'save') this.saveForm()
       else if (key === 'payment-save' && t === 'payment-form') this.savePaymentForm()
+      else if (key === 'budget-save' && t === 'monthly-budget') this.saveMonthlyBudget()
       else if (key === 'submit-feedback') this.submitFeedbackForm()
       else if (key === 'close') {
         const returnTo =
@@ -2061,6 +2120,32 @@ export default {
     openRemindDaysSheet() {
       this.settingsPickerKey = 'remind'
       this.openSheet('settings-picker')
+    },
+    async saveMonthlyBudget() {
+      if (!this.requireLogin() || this.budgetLoading) return
+      const raw = String(this.budgetForm.value || '').trim()
+      if (raw && !/^\d+(\.\d{1,2})?$/.test(raw)) {
+        this.showToast('预算需为非负数字，最多保留 2 位小数')
+        return
+      }
+      const amount = raw ? Number(raw) : 0
+      if (!Number.isFinite(amount) || amount < 0 || amount > 100000000) {
+        this.showToast('预算需在 0-100000000 元之间')
+        return
+      }
+
+      this.budgetLoading = true
+      try {
+        const data = await updateMonthlyBudget(Math.round(amount * 100) / 100)
+        const authStore = useSubeaseAuthStore()
+        authStore.setUserInfo(data.userInfo)
+        this.closeSheet()
+        this.showToast(amount ? '月度预算已更新' : '已关闭月度预算')
+      } catch (error) {
+        this.showToast(error.message || '更新月度预算失败，请重试')
+      } finally {
+        this.budgetLoading = false
+      }
     },
     async onSettingsPickerSelect(value) {
       if (this.settingsPickerLoading) return
@@ -2536,7 +2621,8 @@ export default {
 
 .payment-history-empty,
 .payment-form-note,
-.payment-form-tip {
+.payment-form-tip,
+.budget-form-tip {
   display: block;
   font-size: 23rpx;
   line-height: 1.6;
@@ -2544,6 +2630,10 @@ export default {
 }
 
 .payment-form-tip {
+  padding: 8rpx 0 24rpx;
+}
+
+.budget-form-tip {
   padding: 8rpx 0 24rpx;
 }
 

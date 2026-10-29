@@ -157,3 +157,36 @@ test('marks pre-history estimates and excludes payments without an exchange snap
   assert.equal(trend.estimatedData, true)
   assert.equal(trend.missingRates, true)
 })
+
+test('calculates monthly budget status and overspend amount', () => {
+  assert.deepEqual(helpers.getBudgetStatus(1000, 799.996), {
+    enabled: true,
+    budget: 1000,
+    spent: 800,
+    remaining: 200,
+    overAmount: 0,
+    percent: 80,
+    warning: true,
+    over: false,
+    estimatedData: false
+  })
+  assert.equal(helpers.getBudgetStatus(1000, 1234.56).over, true)
+  assert.equal(helpers.getBudgetStatus(1000, 1234.56).overAmount, 234.56)
+  assert.equal(helpers.getBudgetStatus(0, 100).enabled, false)
+})
+
+test('creates deterministic savings suggestions from budget pressure and subscriptions', () => {
+  const status = helpers.getBudgetStatus(100, 90)
+  const suggestions = helpers.getSavingsSuggestions([
+    { name: '视频会员', category: '视频', autoRenew: true, status: 'active' },
+    { name: '音乐会员', category: '视频', autoRenew: false, status: 'expired' }
+  ], {
+    topSpenders: [{ name: '视频会员', monthlyCost: 80 }]
+  }, status)
+  assert.deepEqual(suggestions, [
+    { type: 'top-spender', name: '视频会员', monthlyCost: 80 },
+    { type: 'auto-renew', count: 1 },
+    { type: 'expired', count: 1 }
+  ])
+  assert.deepEqual(helpers.getSavingsSuggestions([], {}, helpers.getBudgetStatus(100, 0)), [])
+})

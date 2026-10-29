@@ -47,6 +47,14 @@ export function getCurrentUser() {
   })
 }
 
+export function updateMonthlyBudget(monthlyBudgetCny) {
+  return request({
+    url: '/subease/auth/monthly-budget',
+    method: 'PUT',
+    data: { monthlyBudgetCny }
+  })
+}
+
 export function updateProfile({ nickname, avatarFilePath }) {
   const hasNewAvatar = shouldUploadAvatar(avatarFilePath)
   const formData = {}

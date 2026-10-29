@@ -466,6 +466,81 @@ export function getAnalyticsSummary(subscriptions, rates = {}, paymentRecords = 
   }
 }
 
+// ═══ 月度预算：只消费统一统计结果，不重复计算付款口径 ═══
+
+export function getBudgetStatus(monthlyBudgetCny, totalSpend, estimatedData = false) {
+  const budget = Math.max(0, roundMoney(monthlyBudgetCny))
+  const spent = Math.max(0, roundMoney(totalSpend))
+  if (!budget) {
+    return {
+      enabled: false,
+      budget: 0,
+      spent,
+      remaining: 0,
+      overAmount: 0,
+      percent: 0,
+      warning: false,
+      over: false,
+      estimatedData: Boolean(estimatedData)
+    }
+  }
+
+  const remaining = roundMoney(budget - spent)
+  const percent = roundMoney((spent / budget) * 100)
+  return {
+    enabled: true,
+    budget,
+    spent,
+    remaining,
+    overAmount: roundMoney(Math.max(0, spent - budget)),
+    percent,
+    warning: percent >= 80,
+    over: remaining < 0,
+    estimatedData: Boolean(estimatedData)
+  }
+}
+
+export function getSavingsSuggestions(subscriptions, analytics = {}, budgetStatus = {}) {
+  if (!budgetStatus.enabled) return []
+
+  const list = Array.isArray(subscriptions) ? subscriptions : []
+  const suggestions = []
+  const push = (suggestion) => {
+    if (suggestions.length < 3) suggestions.push(suggestion)
+  }
+
+  if (budgetStatus.percent >= 80 && analytics.topSpenders && analytics.topSpenders[0]) {
+    const topSpender = analytics.topSpenders[0]
+    push({
+      type: 'top-spender',
+      name: String(topSpender.name || '未命名订阅'),
+      monthlyCost: roundMoney(topSpender.monthlyCost)
+    })
+  }
+
+  const autoRenewCount = list.filter((item) => item && item.autoRenew).length
+  if (autoRenewCount > 0) {
+    push({ type: 'auto-renew', count: autoRenewCount })
+  }
+
+  const expiredCount = list.filter((item) => item && item.status === 'expired').length
+  if (expiredCount > 0) {
+    push({ type: 'expired', count: expiredCount })
+  }
+
+  const categoryCount = {}
+  list.forEach((item) => {
+    const category = String((item && item.category) || '其他')
+    categoryCount[category] = (categoryCount[category] || 0) + 1
+  })
+  const duplicateCategories = Object.keys(categoryCount).filter((category) => categoryCount[category] >= 2)
+  if (duplicateCategories.length) {
+    push({ type: 'duplicate-category', categories: duplicateCategories.slice(0, 2) })
+  }
+
+  return suggestions
+}
+
 // ═══ 年度账单：按实际扣款与订阅周期估算指定自然年 1-12 月的扣款分布 ═══
 
 export function getYearlyBreakdown(subscriptions, rates = {}, year = new Date().getFullYear(), paymentRecords = []) {

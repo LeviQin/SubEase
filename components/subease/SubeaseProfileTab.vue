@@ -49,6 +49,13 @@
           <view class="settings-arrow"></view>
         </view>
       </view>
+      <view v-if="loggedIn" class="settings-row" @click="$emit('change-budget')">
+        <text class="settings-left">月度预算</text>
+        <view class="settings-right">
+          <text>{{ monthlyBudgetLabel }}</text>
+          <view class="settings-arrow"></view>
+        </view>
+      </view>
       <view v-if="loggedIn" class="settings-row" @click="$emit('subscribe')">
         <text class="settings-left">授权 1 次到期提醒</text>
         <view class="settings-right">
@@ -111,6 +118,10 @@ export default {
       type: String,
       default: '提前 3 天'
     },
+    monthlyBudgetLabel: {
+      type: String,
+      default: '未设置'
+    },
     syncProfileLoading: {
       type: Boolean,
       default: false
@@ -120,7 +131,7 @@ export default {
       default: 0
     }
   },
-  emits: ['request-login', 'logout', 'action', 'change-remind-days', 'sync-profile', 'subscribe']
+  emits: ['request-login', 'logout', 'action', 'change-remind-days', 'change-budget', 'sync-profile', 'subscribe']
 }
 </script>
 

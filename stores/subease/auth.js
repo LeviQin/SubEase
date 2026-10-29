@@ -258,7 +258,8 @@ export const useSubeaseAuthStore = defineStore('subeaseAuth', {
           const needsUserRefresh =
             !this.userInfo ||
             this.userInfo.defaultRemindDays == null ||
-            this.userInfo.subscribeRemain == null
+            this.userInfo.subscribeRemain == null ||
+            this.userInfo.monthlyBudgetCny == null
           if (needsUserRefresh) {
             try {
               await this.fetchCurrentUser()

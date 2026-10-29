@@ -4,6 +4,32 @@
     <template v-else-if="analytics.count > 0">
       <view v-if="missingRates" class="data-warning">部分外币汇率暂不可用，相关金额未计入合计</view>
       <view v-if="estimatedData" class="data-warning data-warning--estimate">部分数据仍按订阅周期估算；记录付款后会逐步转为真实统计</view>
+      <template v-if="budgetStatus.enabled">
+        <view class="section-label">本月预算</view>
+        <view :class="['budget-card', budgetStatus.over ? 'is-over' : budgetStatus.warning ? 'is-warning' : '']">
+          <view class="budget-head">
+            <text class="budget-title">支出进度</text>
+            <text class="budget-status">{{ budgetStatusLabel(budgetStatus) }}</text>
+          </view>
+          <view class="budget-amount-row">
+            <text class="budget-spent">{{ formatCurrency(budgetStatus.spent, 'CNY', amountsHidden) }}</text>
+            <text class="budget-limit">/ {{ formatCurrency(budgetStatus.budget, 'CNY', amountsHidden) }}</text>
+          </view>
+          <view class="budget-progress-track">
+            <view class="budget-progress-fill" :style="{ width: budgetProgressWidth(budgetStatus) }"></view>
+          </view>
+          <text class="budget-desc">{{ budgetStatus.estimatedData ? '当前支出包含周期估算数据' : '按本月付款记录统计' }}</text>
+        </view>
+      </template>
+      <template v-if="savingsSuggestions.length">
+        <view class="section-label">节省建议</view>
+        <view class="suggestion-card">
+          <view v-for="(item, index) in savingsSuggestions" :key="`${item.type}-${index}`" class="suggestion-row">
+            <view class="suggestion-dot"></view>
+            <text class="suggestion-text">{{ suggestionText(item) }}</text>
+          </view>
+        </view>
+      </template>
       <view class="section-label">支出</view>
 
       <view class="metric-row">
@@ -146,12 +172,47 @@ export default {
     estimatedData: {
       type: Boolean,
       default: false
+    },
+    budgetStatus: {
+      type: Object,
+      default: () => ({
+        enabled: false,
+        budget: 0,
+        spent: 0,
+        remaining: 0,
+        overAmount: 0,
+        percent: 0,
+        warning: false,
+        over: false,
+        estimatedData: false
+      })
+    },
+    savingsSuggestions: {
+      type: Array,
+      default: () => []
     }
   },
   methods: {
     formatCurrency,
     amountFontSize(value, maxSize, minSize, maxChars) {
       return getAdaptiveAmountFontSize(value, maxSize, minSize, maxChars)
+    },
+    budgetStatusLabel(status) {
+      if (status.over) return `已超支 ${formatCurrency(status.overAmount, 'CNY', this.amountsHidden)}`
+      if (status.warning) return `已使用 ${status.percent}%`
+      return `剩余 ${formatCurrency(status.remaining, 'CNY', this.amountsHidden)}`
+    },
+    budgetProgressWidth(status) {
+      return `${Math.min(100, Math.max(0, Number(status.percent) || 0))}%`
+    },
+    suggestionText(item) {
+      if (item.type === 'top-spender') {
+        return `检查「${item.name}」是否仍在使用，月均约 ${formatCurrency(item.monthlyCost, 'CNY', this.amountsHidden)}`
+      }
+      if (item.type === 'auto-renew') return `检查 ${item.count} 个自动续费订阅，避免未使用服务继续扣款`
+      if (item.type === 'expired') return `处理已过期的 ${item.count} 个订阅，避免账单继续被估算`
+      if (item.type === 'duplicate-category') return `检查「${item.categories.join('、')}」分类下的订阅，可能存在重复支出`
+      return ''
     },
     trendBarHeight(amount) {
       const max = Math.max(...this.monthlyTrend.map((item) => Number(item.amount) || 0), 0)
@@ -208,6 +269,133 @@ export default {
 .data-warning {
   color: var(--warning);
   background: var(--warning-light);
+}
+
+.budget-card,
+.suggestion-card {
+  margin-bottom: 28rpx;
+  padding: 28rpx 30rpx;
+  background: var(--bg-elevated);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.budget-card.is-warning {
+  background: var(--warning-light);
+  border-color: rgba(255, 158, 46, 0.2);
+}
+
+.budget-card.is-over {
+  background: var(--danger-light);
+  border-color: rgba(255, 59, 48, 0.2);
+}
+
+.budget-head,
+.budget-amount-row,
+.suggestion-row {
+  display: flex;
+  align-items: center;
+}
+
+.budget-head {
+  justify-content: space-between;
+  margin-bottom: 14rpx;
+}
+
+.budget-title {
+  font-size: 25rpx;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.budget-status {
+  font-size: 23rpx;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.budget-card.is-warning .budget-status {
+  color: var(--warning);
+}
+
+.budget-card.is-over .budget-status {
+  color: var(--danger);
+}
+
+.budget-amount-row {
+  align-items: baseline;
+  margin-bottom: 18rpx;
+}
+
+.budget-spent {
+  font-size: 42rpx;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-limit {
+  margin-left: 8rpx;
+  font-size: 24rpx;
+  color: var(--text-secondary);
+}
+
+.budget-progress-track {
+  height: 16rpx;
+  overflow: hidden;
+  margin-bottom: 14rpx;
+  border-radius: 999rpx;
+  background: var(--bg-muted);
+}
+
+.budget-progress-fill {
+  height: 100%;
+  border-radius: 999rpx;
+  background: var(--accent);
+}
+
+.budget-card.is-warning .budget-progress-fill {
+  background: var(--warning);
+}
+
+.budget-card.is-over .budget-progress-fill {
+  background: var(--danger);
+}
+
+.budget-desc {
+  font-size: 22rpx;
+  color: var(--text-secondary);
+}
+
+.suggestion-card {
+  padding-top: 20rpx;
+  padding-bottom: 20rpx;
+}
+
+.suggestion-row {
+  align-items: flex-start;
+  margin-bottom: 16rpx;
+}
+
+.suggestion-row:last-child {
+  margin-bottom: 0;
+}
+
+.suggestion-dot {
+  flex-shrink: 0;
+  width: 12rpx;
+  height: 12rpx;
+  margin: 9rpx 16rpx 0 2rpx;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.suggestion-text {
+  flex: 1;
+  font-size: 24rpx;
+  line-height: 1.55;
+  color: var(--text-secondary);
 }
 
 .metric-row {
