@@ -30,6 +30,31 @@
           </view>
         </view>
       </template>
+      <template v-if="budgetReview.length">
+        <view class="section-label">预算复盘</view>
+        <view class="budget-review-card">
+          <view
+            v-for="item in budgetReview"
+            :key="item.key"
+            class="budget-review-row"
+            @click="$emit('edit-budget', item.key)"
+          >
+            <view class="budget-review-main">
+              <text class="budget-review-month">{{ item.label }}</text>
+              <text v-if="item.budgetStatus.enabled && item.budgetStatus.estimatedData" class="budget-review-note">含估算</text>
+            </view>
+            <view class="budget-review-values">
+              <text v-if="item.budgetStatus.enabled" class="budget-review-amount">
+                {{ formatCurrency(item.amount, 'CNY', amountsHidden) }} / {{ formatCurrency(item.budgetCny, 'CNY', amountsHidden) }}
+              </text>
+              <text v-else class="budget-review-amount is-muted">未设置</text>
+              <text :class="['budget-review-status', item.budgetStatus.over ? 'is-over' : item.budgetStatus.warning ? 'is-warning' : '']">
+                {{ budgetReviewStatusLabel(item) }}
+              </text>
+            </view>
+          </view>
+        </view>
+      </template>
       <view class="section-label">支出</view>
 
       <view class="metric-row">
@@ -187,6 +212,10 @@ export default {
         estimatedData: false
       })
     },
+    budgetReview: {
+      type: Array,
+      default: () => []
+    },
     savingsSuggestions: {
       type: Array,
       default: () => []
@@ -204,6 +233,12 @@ export default {
     },
     budgetProgressWidth(status) {
       return `${Math.min(100, Math.max(0, Number(status.percent) || 0))}%`
+    },
+    budgetReviewStatusLabel(item) {
+      if (!item.budgetStatus.enabled) return '点击设置'
+      if (item.budgetStatus.over) return `超支 ${formatCurrency(item.budgetStatus.overAmount, 'CNY', this.amountsHidden)}`
+      if (item.budgetStatus.warning) return `已用 ${item.budgetStatus.percent}%`
+      return `余 ${formatCurrency(item.budgetStatus.remaining, 'CNY', this.amountsHidden)}`
     },
     suggestionText(item) {
       if (item.type === 'top-spender') {
@@ -396,6 +431,80 @@ export default {
   font-size: 24rpx;
   line-height: 1.55;
   color: var(--text-secondary);
+}
+
+.budget-review-card {
+  margin-bottom: 28rpx;
+  padding: 6rpx 28rpx;
+  background: var(--bg-elevated);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.budget-review-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 88rpx;
+  padding: 14rpx 0;
+  border-bottom: 1px solid var(--separator);
+}
+
+.budget-review-row:last-child {
+  border-bottom: 0;
+}
+
+.budget-review-main,
+.budget-review-values {
+  display: flex;
+  flex-direction: column;
+}
+
+.budget-review-month {
+  font-size: 25rpx;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.budget-review-note {
+  margin-top: 6rpx;
+  font-size: 20rpx;
+  color: var(--text-tertiary);
+}
+
+.budget-review-values {
+  align-items: flex-end;
+  min-width: 0;
+  margin-left: 20rpx;
+}
+
+.budget-review-amount,
+.budget-review-status {
+  white-space: nowrap;
+}
+
+.budget-review-amount {
+  font-size: 23rpx;
+  color: var(--text-secondary);
+}
+
+.budget-review-amount.is-muted {
+  color: var(--text-tertiary);
+}
+
+.budget-review-status {
+  margin-top: 6rpx;
+  font-size: 21rpx;
+  color: var(--accent);
+}
+
+.budget-review-status.is-warning {
+  color: var(--warning);
+}
+
+.budget-review-status.is-over {
+  color: var(--danger);
 }
 
 .metric-row {

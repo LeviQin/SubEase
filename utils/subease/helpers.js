@@ -500,6 +500,40 @@ export function getBudgetStatus(monthlyBudgetCny, totalSpend, estimatedData = fa
   }
 }
 
+export function getBudgetMonthOptions(count = 6, baseDate = new Date()) {
+  const safeCount = Math.max(1, Math.min(24, Number(count) || 6))
+  const options = []
+  for (let offset = safeCount - 1; offset >= 0; offset -= 1) {
+    const date = new Date(baseDate.getFullYear(), baseDate.getMonth() - offset, 1)
+    const month = `${date.getFullYear()}-${pad(date.getMonth() + 1)}`
+    options.push({
+      month,
+      label: `${date.getFullYear()}年${date.getMonth() + 1}月`
+    })
+  }
+  return options
+}
+
+export function getBudgetReview(months = [], budgets = [], estimatedData = false) {
+  const budgetMap = new Map()
+  const source = Array.isArray(budgets) ? budgets : []
+  source.forEach((item) => {
+    const month = String(item?.month || '').trim()
+    const amount = Number(item?.budgetCny)
+    if (!month || !Number.isFinite(amount) || amount <= 0) return
+    budgetMap.set(month, roundMoney(amount))
+  })
+
+  return (Array.isArray(months) ? months : []).map((item) => {
+    const budgetCny = budgetMap.get(String(item.key)) || 0
+    return {
+      ...item,
+      budgetCny,
+      budgetStatus: getBudgetStatus(budgetCny, item.amount, estimatedData)
+    }
+  })
+}
+
 export function getSavingsSuggestions(subscriptions, analytics = {}, budgetStatus = {}) {
   if (!budgetStatus.enabled) return []
 

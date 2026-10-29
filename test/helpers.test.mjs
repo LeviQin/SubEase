@@ -190,3 +190,19 @@ test('creates deterministic savings suggestions from budget pressure and subscri
   ])
   assert.deepEqual(helpers.getSavingsSuggestions([], {}, helpers.getBudgetStatus(100, 0)), [])
 })
+
+test('builds recent budget month options and review statuses', () => {
+  const options = helpers.getBudgetMonthOptions(3, new Date(2026, 2, 15))
+  assert.deepEqual(options.map((item) => item.month), ['2026-01', '2026-02', '2026-03'])
+  const review = helpers.getBudgetReview([
+    { key: '2026-02', label: '2月', amount: 90 },
+    { key: '2026-03', label: '3月', amount: 120 }
+  ], [
+    { month: '2026-02', budgetCny: 100 },
+    { month: '2026-03', budgetCny: 100 }
+  ], true)
+  assert.equal(review[0].budgetStatus.warning, true)
+  assert.equal(review[1].budgetStatus.over, true)
+  assert.equal(review[1].budgetStatus.overAmount, 20)
+  assert.equal(review[1].budgetStatus.estimatedData, true)
+})

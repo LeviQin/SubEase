@@ -46,6 +46,22 @@
         </view>
       </view>
 
+      <template v-if="budgetMonths.length">
+        <view class="section-label">预算对照</view>
+        <view class="budget-report-card">
+          <view v-for="item in budgetMonths" :key="item.key" class="budget-report-row">
+            <view class="budget-report-main">
+              <text class="budget-report-month">{{ item.label }}</text>
+              <text v-if="item.budgetStatus.estimatedData" class="budget-report-note">含周期估算</text>
+            </view>
+            <view class="budget-report-values">
+              <text class="budget-report-amount">{{ formatCurrency(item.amount, 'CNY') }} / {{ formatCurrency(item.budgetCny, 'CNY') }}</text>
+              <text :class="['budget-report-status', item.budgetStatus.over ? 'is-over' : item.budgetStatus.warning ? 'is-warning' : '']">{{ budgetStatusLabel(item) }}</text>
+            </view>
+          </view>
+        </view>
+      </template>
+
       <view class="section-label">年度 TOP 订阅</view>
       <view class="rank-card" v-if="report.topSubscriptions.length">
         <view v-for="(item, index) in report.topSubscriptions" :key="item.name" class="rank-row">
@@ -70,6 +86,7 @@
 import {
   formatCurrency as formatMoney,
   getAdaptiveAmountFontSize,
+  getBudgetReview,
   normalizeSubscriptions,
   getYearlyBreakdown,
   hasMissingRates
@@ -82,6 +99,7 @@ import {
   loadPaymentRecordsCache
 } from '@/utils/subease/cache'
 import { getCurrencyRates } from '@/api/subease/rates'
+import { getMonthlyBudgets } from '@/api/subease/auth'
 import { getPaymentRecords } from '@/api/subease/subscription'
 
 export default {
@@ -91,7 +109,13 @@ export default {
       loading: true,
       amountsHidden: loadAmountsHidden(),
       missingRates: false,
-      estimatedData: false
+      estimatedData: false,
+      budgetReview: []
+    }
+  },
+  computed: {
+    budgetMonths() {
+      return this.budgetReview.filter((item) => item.budgetStatus.enabled)
     }
   },
   onLoad() {
@@ -124,6 +148,11 @@ export default {
     chartValueFontSize(amount) {
       return getAdaptiveAmountFontSize(this.formatCurrency(amount, 'CNY'), 18, 8, 5)
     },
+    budgetStatusLabel(item) {
+      if (item.budgetStatus.over) return `超支 ${this.formatCurrency(item.budgetStatus.overAmount, 'CNY')}`
+      if (item.budgetStatus.warning) return `已用 ${item.budgetStatus.percent}%`
+      return `余 ${this.formatCurrency(item.budgetStatus.remaining, 'CNY')}`
+    },
     async buildReport() {
       try {
         const cached = loadSubscriptionsCache()
@@ -151,7 +180,16 @@ export default {
           console.warn('[AnnualReport] 获取付款历史失败，使用缓存', error.message)
         }
         this.missingRates = hasMissingRates(normalized, rates || {}, paymentRecords)
-        this.report = getYearlyBreakdown(normalized, rates, year, paymentRecords)
+        const report = getYearlyBreakdown(normalized, rates, year, paymentRecords)
+        let budgets = []
+        try {
+          const budgetData = await getMonthlyBudgets({ from: `${year}-01`, to: `${year}-12` })
+          budgets = Array.isArray(budgetData?.budgets) ? budgetData.budgets : []
+        } catch (error) {
+          console.warn('[AnnualReport] 获取预算历史失败，继续生成账单', error.message)
+        }
+        this.budgetReview = getBudgetReview(report.months, budgets, Boolean(report.estimatedData))
+        this.report = report
         this.estimatedData = Boolean(this.report.estimatedData)
       } catch (error) {
         console.error('[AnnualReport] 生成年度报告失败', error)
@@ -355,6 +393,75 @@ export default {
   margin-top: 10rpx;
   font-size: 18rpx;
   color: var(--text-tertiary);
+}
+
+.budget-report-card {
+  margin-bottom: 32rpx;
+  padding: 6rpx 24rpx;
+  background: var(--bg-elevated);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.budget-report-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 84rpx;
+  padding: 14rpx 0;
+  border-bottom: 1px solid var(--separator);
+}
+
+.budget-report-row:last-child {
+  border-bottom: 0;
+}
+
+.budget-report-main,
+.budget-report-values {
+  display: flex;
+  flex-direction: column;
+}
+
+.budget-report-month {
+  font-size: 25rpx;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.budget-report-note {
+  margin-top: 6rpx;
+  font-size: 20rpx;
+  color: var(--text-tertiary);
+}
+
+.budget-report-values {
+  align-items: flex-end;
+  margin-left: 20rpx;
+}
+
+.budget-report-amount,
+.budget-report-status {
+  white-space: nowrap;
+}
+
+.budget-report-amount {
+  font-size: 23rpx;
+  color: var(--text-secondary);
+}
+
+.budget-report-status {
+  margin-top: 6rpx;
+  font-size: 21rpx;
+  color: var(--accent);
+}
+
+.budget-report-status.is-warning {
+  color: var(--warning);
+}
+
+.budget-report-status.is-over {
+  color: var(--danger);
 }
 
 .rank-row {

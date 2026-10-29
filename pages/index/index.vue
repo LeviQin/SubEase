@@ -49,7 +49,9 @@
         :missing-rates="missingRates"
         :estimated-data="analyticsSummary.estimatedData"
         :budget-status="budgetStatus"
+        :budget-review="budgetReview"
         :savings-suggestions="savingsSuggestions"
+        @edit-budget="openMonthlyBudgetSheet"
       />
 
       <SubeaseProfileTab
@@ -240,7 +242,13 @@
       </template>
 
       <template v-else-if="sheetState.type === 'monthly-budget'">
-        <view class="budget-form-tip">使用人民币设置本月预算，仅用于支出分析提示，不会限制记录付款。输入 0 或留空可关闭预算。</view>
+        <view class="budget-form-tip">使用人民币设置指定月份预算，仅用于支出分析提示，不会限制记录付款。输入 0 或留空可关闭该月份预算。</view>
+        <view class="form-field">
+          <text class="form-label">预算月份</text>
+          <picker mode="date" :value="`${budgetForm.month}-01`" @change="onBudgetMonthChange">
+            <view class="form-input picker-input">{{ budgetForm.month || currentBudgetMonth }}</view>
+          </picker>
+        </view>
         <view class="form-field">
           <text class="form-label">月度预算（CNY）</text>
           <input
@@ -486,6 +494,8 @@ import {
   formatCurrency,
   formatShortDate,
   getAnalyticsSummary,
+  getBudgetMonthOptions,
+  getBudgetReview,
   getDaysUntil,
   getMonthlyTrend,
   getBudgetStatus,
@@ -515,13 +525,16 @@ import {
   loadPaymentRecordsCache,
   savePaymentRecordsCache,
   clearPaymentRecordsCache,
+  loadMonthlyBudgetsCache,
+  saveMonthlyBudgetsCache,
+  clearMonthlyBudgetsCache,
   loadAmountsHidden,
   saveAmountsHidden
 } from '@/utils/subease/cache'
 import { CATEGORY_OPTIONS, CURRENCY_OPTIONS, DEFAULT_PROFILE, MAX_CUSTOM_CATEGORIES, POPULAR_SUBSCRIPTIONS } from '@/utils/subease/constants'
 import { createEmptyFormState, createInitialState } from '@/utils/subease/state'
 import { useSubeaseAuthStore, getWeixinLoginCode } from '@/stores/subease/auth'
-import { updateProfile, updateMonthlyBudget, wxLogin } from '@/api/subease/auth'
+import { getMonthlyBudgets, updateProfile, updateMonthlyBudget, wxLogin } from '@/api/subease/auth'
 import {
   getSubscriptionList,
   createSubscription,
@@ -590,6 +603,7 @@ export default {
       },
       rates: {},
       paymentRecords: loadPaymentRecordsCache() || [],
+      monthlyBudgets: loadMonthlyBudgetsCache() || [],
       paymentHistoryLoading: false,
       paymentFormLoading: false,
       paymentFormMode: 'create',
@@ -602,6 +616,7 @@ export default {
       },
       budgetLoading: false,
       budgetForm: {
+        month: '',
         value: ''
       },
       amountsHidden: loadAmountsHidden(),
@@ -717,6 +732,9 @@ export default {
     missingRates() {
       return hasMissingRates(this.subscriptions, this.rates, this.paymentRecords)
     },
+    currentBudgetMonth() {
+      return getBudgetMonthOptions(1)[0].month
+    },
     monthlyBudgetCny() {
       const authStore = useSubeaseAuthStore()
       return Math.max(0, Number(authStore.userInfo?.monthlyBudgetCny || 0))
@@ -731,6 +749,14 @@ export default {
         this.analyticsSummary.totalSpend,
         this.analyticsSummary.estimatedData
       )
+    },
+    budgetReview() {
+      const review = getBudgetReview(
+        this.monthlyTrend,
+        this.monthlyBudgets,
+        Boolean(this.monthlyTrend.estimatedData)
+      )
+      return review.some((item) => item.budgetStatus.enabled) ? review : []
     },
     savingsSuggestions() {
       return getSavingsSuggestions(this.subscriptions, this.analyticsSummary, this.budgetStatus)
@@ -1006,6 +1032,7 @@ export default {
         }
         this.subscriptions = []
         this.paymentRecords = []
+        this.monthlyBudgets = []
       },
       immediate: true
     },
@@ -1019,6 +1046,7 @@ export default {
       if (!this.authReady) return
       this.subscriptions = []
       this.paymentRecords = []
+      this.monthlyBudgets = []
       if (this.activeTab !== 'profile') {
         this.activeTab = 'profile'
       }
@@ -1133,6 +1161,7 @@ export default {
         this.subscriptions = normalized
         saveSubscriptionsCache(normalized)
         await this.loadPaymentRecords({ silent: true })
+        await this.loadMonthlyBudgets({ silent: true })
         const serverRemindDays = Number(authStore.userInfo?.defaultRemindDays)
         if (Number.isInteger(serverRemindDays) && serverRemindDays > 0) {
           this.settingsRemindDays = serverRemindDays
@@ -1173,6 +1202,24 @@ export default {
       } catch (error) {
         console.warn('[Subease] 获取付款历史失败', error)
         if (!options.silent) this.showToast(error.message || '付款历史加载失败')
+      }
+    },
+    async loadMonthlyBudgets(options = {}) {
+      if (!this.loggedIn) {
+        this.monthlyBudgets = []
+        return
+      }
+      try {
+        const cached = loadMonthlyBudgetsCache()
+        if (cached && cached.length && !this.monthlyBudgets.length) {
+          this.monthlyBudgets = cached
+        }
+        const data = await getMonthlyBudgets()
+        this.monthlyBudgets = Array.isArray(data?.budgets) ? data.budgets : []
+        saveMonthlyBudgetsCache(this.monthlyBudgets)
+      } catch (error) {
+        console.warn('[Subease] 获取月度预算历史失败', error)
+        if (!options.silent) this.showToast(error.message || '月度预算加载失败')
       }
     },
     async loadSubscriptionPayments(subscriptionId, options = {}) {
@@ -1424,10 +1471,17 @@ export default {
         returnTo: this.sheetState.type === 'payment-history' ? 'payment-history' : 'detail'
       })
     },
-    openMonthlyBudgetSheet() {
+    openMonthlyBudgetSheet(month = this.currentBudgetMonth) {
       if (!this.requireLogin() || this.budgetLoading) return
+      const selectedMonth = String(month || this.currentBudgetMonth).slice(0, 7)
+      const existing = this.monthlyBudgets.find((item) => item.month === selectedMonth)
       this.budgetForm = {
-        value: this.monthlyBudgetCny ? String(this.monthlyBudgetCny) : ''
+        month: selectedMonth,
+        value: existing
+          ? String(existing.budgetCny)
+          : selectedMonth === this.currentBudgetMonth && this.monthlyBudgetCny
+            ? String(this.monthlyBudgetCny)
+            : ''
       }
       this.openSheet('monthly-budget')
     },
@@ -1435,6 +1489,18 @@ export default {
       this.paymentForm = {
         ...this.paymentForm,
         paidDate: event.detail.value
+      }
+    },
+    onBudgetMonthChange(event) {
+      const month = String(event.detail.value || '').slice(0, 7)
+      const existing = this.monthlyBudgets.find((item) => item.month === month)
+      this.budgetForm = {
+        month,
+        value: existing
+          ? String(existing.budgetCny)
+          : month === this.currentBudgetMonth && this.monthlyBudgetCny
+            ? String(this.monthlyBudgetCny)
+            : ''
       }
     },
     async savePaymentForm() {
@@ -2068,7 +2134,9 @@ export default {
       this.selectedIds = []
       clearSubscriptionsCache()
       clearPaymentRecordsCache()
+      clearMonthlyBudgetsCache()
       this.paymentRecords = []
+      this.monthlyBudgets = []
       this.showToast('已退出')
     },
     showToast(message) {
@@ -2136,11 +2204,21 @@ export default {
 
       this.budgetLoading = true
       try {
-        const data = await updateMonthlyBudget(Math.round(amount * 100) / 100)
+        const month = String(this.budgetForm.month || this.currentBudgetMonth).slice(0, 7)
+        const normalizedAmount = Math.round(amount * 100) / 100
+        const data = await updateMonthlyBudget(normalizedAmount, month)
         const authStore = useSubeaseAuthStore()
         authStore.setUserInfo(data.userInfo)
+        if (normalizedAmount > 0) {
+          const nextBudget = { month, budgetCny: normalizedAmount }
+          const others = this.monthlyBudgets.filter((item) => item.month !== month)
+          this.monthlyBudgets = [...others, nextBudget].sort((a, b) => a.month.localeCompare(b.month))
+        } else {
+          this.monthlyBudgets = this.monthlyBudgets.filter((item) => item.month !== month)
+        }
+        saveMonthlyBudgetsCache(this.monthlyBudgets)
         this.closeSheet()
-        this.showToast(amount ? '月度预算已更新' : '已关闭月度预算')
+        this.showToast(normalizedAmount ? `${month} 预算已更新` : `已关闭 ${month} 预算`)
       } catch (error) {
         this.showToast(error.message || '更新月度预算失败，请重试')
       } finally {

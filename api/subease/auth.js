@@ -47,11 +47,19 @@ export function getCurrentUser() {
   })
 }
 
-export function updateMonthlyBudget(monthlyBudgetCny) {
+export function getMonthlyBudgets(params = {}) {
+  return request({
+    url: '/subease/auth/monthly-budgets',
+    method: 'GET',
+    data: params
+  })
+}
+
+export function updateMonthlyBudget(monthlyBudgetCny, month = '') {
   return request({
     url: '/subease/auth/monthly-budget',
     method: 'PUT',
-    data: { monthlyBudgetCny }
+    data: { monthlyBudgetCny, ...(month ? { month } : {}) }
   })
 }
 
