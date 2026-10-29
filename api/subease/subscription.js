@@ -23,6 +23,13 @@ export function updateSubscription(id, data) {
   })
 }
 
+export function markSubscriptionPaid(id) {
+  return request({
+    url: `/subease/subscription/${id}/mark-paid`,
+    method: 'POST'
+  })
+}
+
 export function deleteSubscription(id) {
   return request({
     url: `/subease/subscription/${id}`,

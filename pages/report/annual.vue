@@ -6,13 +6,13 @@
       <view class="hero">
         <text class="hero-year">{{ report.year }}</text>
         <text class="hero-title">年度订阅账单</text>
-        <text class="hero-amount">{{ formatCurrency(report.total, 'CNY') }}</text>
+        <text class="hero-amount" :style="{ fontSize: amountFontSize(formatCurrency(report.total, 'CNY'), 88, 44, 10) }">{{ formatCurrency(report.total, 'CNY') }}</text>
         <text class="hero-desc">全年订阅支出（按周期估算）</text>
       </view>
 
       <view class="metric-row">
         <view class="metric-card">
-          <text class="metric-value">{{ formatCurrency(report.monthlyAverage, 'CNY') }}</text>
+          <text class="metric-value" :style="{ fontSize: amountFontSize(formatCurrency(report.monthlyAverage, 'CNY'), 36, 22, 7) }">{{ formatCurrency(report.monthlyAverage, 'CNY') }}</text>
           <text class="metric-label">月均支出</text>
         </view>
         <view class="metric-card">
@@ -20,7 +20,7 @@
           <text class="metric-label">支出最高月份</text>
         </view>
         <view class="metric-card">
-          <text class="metric-value">{{ formatCurrency(report.peakMonth.amount, 'CNY') }}</text>
+          <text class="metric-value" :style="{ fontSize: amountFontSize(formatCurrency(report.peakMonth.amount, 'CNY'), 36, 22, 7) }">{{ formatCurrency(report.peakMonth.amount, 'CNY') }}</text>
           <text class="metric-label">最高月支出</text>
         </view>
       </view>
@@ -29,7 +29,10 @@
       <view class="chart-card">
         <view class="chart-bars">
           <view v-for="month in report.months" :key="month.key" class="chart-bar-wrap" @click="showMonthDetail(month)">
-            <text class="chart-value"></text>
+            <text
+              class="chart-value"
+              :style="{ fontSize: chartValueFontSize(month.amount) }"
+            >{{ month.amount > 0 ? formatCurrency(month.amount, 'CNY') : '' }}</text>
             <view class="chart-bar-track">
               <view
                 class="chart-bar-fill"
@@ -47,7 +50,7 @@
         <view v-for="(item, index) in report.topSubscriptions" :key="item.name" class="rank-row">
           <text :class="['rank-index', index < 3 ? 'is-top' : '']">{{ index + 1 }}</text>
           <text class="rank-name">{{ item.name }}</text>
-          <text class="rank-amount">{{ formatCurrency(item.amount, 'CNY') }}</text>
+          <text class="rank-amount" :style="{ fontSize: amountFontSize(formatCurrency(item.amount, 'CNY'), 24, 14, 7) }">{{ formatCurrency(item.amount, 'CNY') }}</text>
         </view>
       </view>
       <view v-else class="rank-empty">暂无订阅数据</view>
@@ -63,7 +66,13 @@
 </template>
 
 <script>
-import { formatCurrency as formatMoney, normalizeSubscriptions, getYearlyBreakdown, hasMissingRates } from '@/utils/subease/helpers'
+import {
+  formatCurrency as formatMoney,
+  getAdaptiveAmountFontSize,
+  normalizeSubscriptions,
+  getYearlyBreakdown,
+  hasMissingRates
+} from '@/utils/subease/helpers'
 import { loadSubscriptionsCache, loadRatesCache, loadAmountsHidden, saveRatesCache } from '@/utils/subease/cache'
 import { getCurrencyRates } from '@/api/subease/rates'
 
@@ -99,6 +108,12 @@ export default {
   methods: {
     formatCurrency(price, currency) {
       return formatMoney(price, currency, this.amountsHidden)
+    },
+    amountFontSize(value, maxSize, minSize, maxChars) {
+      return getAdaptiveAmountFontSize(value, maxSize, minSize, maxChars)
+    },
+    chartValueFontSize(amount) {
+      return getAdaptiveAmountFontSize(this.formatCurrency(amount, 'CNY'), 18, 8, 5)
     },
     async buildReport() {
       try {
@@ -204,6 +219,8 @@ export default {
   font-weight: 700;
   letter-spacing: -2rpx;
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: visible;
 }
 
 .hero-desc {
@@ -235,6 +252,8 @@ export default {
   font-weight: 700;
   letter-spacing: -1rpx;
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: visible;
 }
 
 .metric-label {
@@ -283,6 +302,8 @@ export default {
   color: var(--text-secondary);
   line-height: 30rpx;
   white-space: nowrap;
+  overflow: visible;
+  text-align: center;
 }
 
 .chart-bar-track {
@@ -358,6 +379,8 @@ export default {
   font-size: 24rpx;
   font-weight: 600;
   color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: visible;
 }
 
 .rank-empty {

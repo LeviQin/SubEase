@@ -430,6 +430,7 @@ import {
   createSubscription,
   updateSubscription,
   deleteSubscription,
+  markSubscriptionPaid,
   batchDeleteSubscriptions,
   batchImportSubscriptions,
   batchUpdateCategory,
@@ -502,7 +503,8 @@ export default {
       ],
       importText: '',
       importPreview: null,
-      importLoading: false
+      importLoading: false,
+      markPaidLoading: false
     }
   },
   created() {
@@ -736,9 +738,20 @@ export default {
         return [{ key: 'close', text: '关闭', type: 'secondary' }]
       }
       if (t === 'detail') {
+        const current = this.currentSubscription
+        const prepaidStillActive = current && Number(current.paidCycles || 1) > 1 && Number(current.days || 0) > 0
+        const canMarkPaid = current && !prepaidStillActive
         return [
-          { key: 'edit', text: '编辑', type: 'secondary' },
-          { key: 'delete', text: '删除', type: 'danger' }
+          ...(canMarkPaid
+            ? [{
+                key: 'mark-paid',
+                text: this.markPaidLoading ? '记录中...' : '记录付款',
+                type: 'primary',
+                disabled: this.markPaidLoading
+              }]
+            : []),
+          { key: 'edit', text: '编辑', type: 'secondary', disabled: this.markPaidLoading },
+          { key: 'delete', text: '删除', type: 'danger', disabled: this.markPaidLoading }
         ]
       }
       if (t === 'confirm-delete' || t === 'batch-delete') {
@@ -1374,6 +1387,44 @@ export default {
         this.showToast(error.message || '删除失败，请重试')
       }
     },
+    async markCurrentSubscriptionPaid() {
+      if (!this.requireLogin() || this.markPaidLoading) return
+      const subscription = this.currentSubscription
+      if (!subscription) return
+      if (Number(subscription.paidCycles || 1) > 1 && Number(subscription.days || 0) > 0) {
+        this.showToast('该订阅仍处于预付覆盖期，请到期后再记录付款')
+        return
+      }
+
+      const result = await new Promise((resolve) => {
+        uni.showModal({
+          title: '记录付款',
+          content: `确认已支付「${subscription.name}」？下次付款日将顺延一个${subscription.cycle === '季度付' ? '季度' : subscription.cycle === '年付' ? '年' : '月'}。`,
+          confirmText: '确认',
+          success: resolve,
+          fail: () => resolve({ confirm: false })
+        })
+      })
+      if (!result.confirm) return
+
+      this.markPaidLoading = true
+      try {
+        const updated = await markSubscriptionPaid(subscription.id)
+        const index = this.subscriptions.findIndex((item) => item.id === subscription.id)
+        if (index >= 0) {
+          const nextList = [...this.subscriptions]
+          nextList.splice(index, 1, updated)
+          this.subscriptions = normalizeSubscriptions(nextList)
+          saveSubscriptionsCache(this.subscriptions)
+        }
+        this.closeSheet()
+        this.showToast('已记录付款，下次付款日已顺延')
+      } catch (error) {
+        this.showToast(error.message || '记录付款失败，请重试')
+      } finally {
+        this.markPaidLoading = false
+      }
+    },
     async confirmBatchDelete() {
       if (!this.requireLogin()) return
       try {
@@ -1733,6 +1784,7 @@ export default {
       const t = this.sheetState.type
       if (key === 'clear-filter') this.clearFilter()
       else if (key === 'done') this.closeSheet()
+      else if (key === 'mark-paid' && t === 'detail') this.markCurrentSubscriptionPaid()
       else if (key === 'edit') this.openAddSheet(this.currentSubscription?.id)
       else if (key === 'delete') this.openDeleteSheet(this.currentSubscription?.id)
       else if (key === 'cancel' && (t === 'confirm-delete' || t === 'batch-delete' || t === 'form' || t === 'feedback' || t === 'profile-sync' || t === 'import')) this.closeSheet()

@@ -7,40 +7,40 @@
 
       <view class="metric-row">
         <view class="metric-card">
-          <text class="metric-value">{{ formatCurrency(analytics.totalSpend, 'CNY', amountsHidden) }}</text>
+          <text class="metric-value" :style="{ fontSize: amountFontSize(formatCurrency(analytics.totalSpend, 'CNY', amountsHidden), 44, 24, 7) }">{{ formatCurrency(analytics.totalSpend, 'CNY', amountsHidden) }}</text>
           <text class="metric-label">本月预计</text>
         </view>
         <view class="metric-card">
-          <text class="metric-value">{{ formatCurrency(analytics.monthlyTotal, 'CNY', amountsHidden) }}</text>
+          <text class="metric-value" :style="{ fontSize: amountFontSize(formatCurrency(analytics.monthlyTotal, 'CNY', amountsHidden), 44, 24, 7) }">{{ formatCurrency(analytics.monthlyTotal, 'CNY', amountsHidden) }}</text>
           <text class="metric-label">月均预计</text>
         </view>
         <view class="metric-card">
-          <text class="metric-value">{{ formatCurrency(analytics.yearlyTotal, 'CNY', amountsHidden) }}</text>
+          <text class="metric-value" :style="{ fontSize: amountFontSize(formatCurrency(analytics.yearlyTotal, 'CNY', amountsHidden), 44, 24, 7) }">{{ formatCurrency(analytics.yearlyTotal, 'CNY', amountsHidden) }}</text>
           <text class="metric-label">年度预计</text>
         </view>
         <view class="metric-card">
-          <text class="metric-value">{{ analytics.count }}</text>
+          <text class="metric-value" :style="{ fontSize: amountFontSize(analytics.count, 44, 24, 7) }">{{ analytics.count }}</text>
           <text class="metric-label">有效订阅</text>
         </view>
         <view class="metric-card">
-          <text class="metric-value">{{ analytics.hottestCategory }}</text>
+          <text class="metric-value" :style="{ fontSize: amountFontSize(analytics.hottestCategory, 44, 24, 7) }">{{ analytics.hottestCategory }}</text>
           <text class="metric-label">最高分类</text>
         </view>
         <view class="metric-card">
-          <text class="metric-value">{{ formatCurrency(analytics.hottestCategoryAmount, 'CNY', amountsHidden) }}</text>
+          <text class="metric-value" :style="{ fontSize: amountFontSize(formatCurrency(analytics.hottestCategoryAmount, 'CNY', amountsHidden), 44, 24, 7) }">{{ formatCurrency(analytics.hottestCategoryAmount, 'CNY', amountsHidden) }}</text>
           <text class="metric-label">分类最高支出</text>
         </view>
       </view>
 
       <view class="section-label">下月扣款预测</view>
       <view class="next-month-card">
-        <text class="next-month-value">{{ formatCurrency(analytics.nextMonthTotal, 'CNY', amountsHidden) }}</text>
+        <text class="next-month-value" :style="{ fontSize: amountFontSize(formatCurrency(analytics.nextMonthTotal, 'CNY', amountsHidden), 52, 30, 10) }">{{ formatCurrency(analytics.nextMonthTotal, 'CNY', amountsHidden) }}</text>
         <text class="next-month-desc">仅统计下个月到期且未预付的订阅</text>
       </view>
 
       <view class="section-label">本周支出</view>
       <view class="week-card">
-        <text class="week-value">{{ formatCurrency(weekExpense.total, 'CNY', amountsHidden) }}</text>
+        <text class="week-value" :style="{ fontSize: amountFontSize(formatCurrency(weekExpense.total, 'CNY', amountsHidden), 46, 28, 10) }">{{ formatCurrency(weekExpense.total, 'CNY', amountsHidden) }}</text>
         <text class="week-desc">{{ weekExpense.count ? `本周共 ${weekExpense.count} 笔扣款` : '本周暂无扣款计划' }}</text>
       </view>
 
@@ -48,7 +48,7 @@
       <view class="trend-card" v-if="monthlyTrend.length">
         <view class="trend-bars">
           <view v-for="item in monthlyTrend" :key="item.key" class="trend-bar-wrap" @click="showTrendDetail(item)">
-            <text class="trend-value">{{ item.amount > 0 ? formatCurrency(item.amount, 'CNY', amountsHidden) : '' }}</text>
+            <text class="trend-value" :style="{ fontSize: amountFontSize(item.amount > 0 ? formatCurrency(item.amount, 'CNY', amountsHidden) : '', 20, 10, 6) }">{{ item.amount > 0 ? formatCurrency(item.amount, 'CNY', amountsHidden) : '' }}</text>
             <view class="trend-bar-track">
               <view
                 class="trend-bar-fill"
@@ -69,7 +69,7 @@
           <view class="stat-bar">
             <view class="stat-bar-fill" :style="{ width: `${item.percent}%` }"></view>
           </view>
-          <text class="stat-value">{{ formatCurrency(item.amount, 'CNY', amountsHidden) }}</text>
+          <text class="stat-value" :style="{ fontSize: amountFontSize(formatCurrency(item.amount, 'CNY', amountsHidden), 24, 14, 7) }">{{ formatCurrency(item.amount, 'CNY', amountsHidden) }}</text>
         </view>
       </view>
 
@@ -89,7 +89,7 @@
         <view v-for="(item, index) in analytics.topSpenders" :key="index" class="rank-row">
           <text :class="['rank-index', index < 3 ? 'is-top' : '']">{{ index + 1 }}</text>
           <text class="rank-name">{{ item.name }}</text>
-          <text class="rank-cost">{{ formatCurrency(item.monthlyCost, 'CNY', amountsHidden) }}/月</text>
+          <text class="rank-cost" :style="{ fontSize: amountFontSize(formatCurrency(item.monthlyCost, 'CNY', amountsHidden) + '/月', 24, 14, 7) }">{{ formatCurrency(item.monthlyCost, 'CNY', amountsHidden) }}/月</text>
         </view>
       </view>
     </template>
@@ -102,7 +102,7 @@
 </template>
 
 <script>
-import { formatCurrency } from '@/utils/subease/helpers'
+import { formatCurrency, getAdaptiveAmountFontSize } from '@/utils/subease/helpers'
 
 export default {
   name: 'SubeaseAnalyticsTab',
@@ -145,6 +145,9 @@ export default {
   },
   methods: {
     formatCurrency,
+    amountFontSize(value, maxSize, minSize, maxChars) {
+      return getAdaptiveAmountFontSize(value, maxSize, minSize, maxChars)
+    },
     trendBarHeight(amount) {
       const max = Math.max(...this.monthlyTrend.map((item) => Number(item.amount) || 0), 0)
       if (!amount || !max) return '6%'
@@ -236,6 +239,8 @@ export default {
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
+  white-space: nowrap;
+  overflow: visible;
 }
 
 .metric-label {
@@ -263,6 +268,8 @@ export default {
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
+  white-space: nowrap;
+  overflow: visible;
 }
 
 .next-month-desc {
@@ -288,6 +295,8 @@ export default {
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
+  white-space: nowrap;
+  overflow: visible;
 }
 
 .week-desc {
@@ -332,6 +341,7 @@ export default {
   color: var(--text-secondary);
   line-height: 34rpx;
   white-space: nowrap;
+  overflow: visible;
 }
 
 .trend-bar-track {
@@ -413,6 +423,8 @@ export default {
   font-weight: 600;
   text-align: right;
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: visible;
 }
 
 .rank-row {
@@ -460,6 +472,8 @@ export default {
   font-size: 24rpx;
   font-weight: 600;
   color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: visible;
 }
 
 .empty-chart {

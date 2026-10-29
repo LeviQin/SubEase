@@ -112,6 +112,16 @@ export function formatCurrency(price, currency, hideAmount = false) {
   return code === 'CNY' ? `${symbol}${fixed}` : `${symbol} ${fixed}`
 }
 
+export function getAdaptiveAmountFontSize(value, maxSize, minSize, maxChars) {
+  const textLength = String(value ?? '').length
+  const max = Number(maxSize) || 44
+  const min = Number(minSize) || 24
+  const chars = Math.max(1, Number(maxChars) || 7)
+  const ratio = Math.min(1, chars / Math.max(textLength, chars))
+  const size = Math.max(min, Math.round(max * ratio))
+  return `${size}rpx`
+}
+
 // 统一折算 CNY（模块级单例，供统计复用）
 function toCny(price, currency, rates) {
   const code = String(currency || 'CNY').toUpperCase()

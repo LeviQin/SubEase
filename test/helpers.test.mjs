@@ -89,3 +89,9 @@ test('does not convert a foreign currency at a fabricated 1:1 rate', () => {
   assert.equal(helpers.getSummaryStats(list, {}).monthlyTotal, 0)
   assert.equal(helpers.hasMissingRates(list, {}), true)
 })
+
+test('adapts long amount text without truncating it', () => {
+  assert.equal(helpers.getAdaptiveAmountFontSize('¥289.94', 44, 24, 7), '44rpx')
+  assert.equal(helpers.getAdaptiveAmountFontSize('¥1,234,567.89', 44, 24, 7), '24rpx')
+  assert.equal(helpers.getAdaptiveAmountFontSize('¥1,234,567.89', 18, 8, 5), '8rpx')
+})
