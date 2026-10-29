@@ -23,10 +23,42 @@ export function updateSubscription(id, data) {
   })
 }
 
-export function markSubscriptionPaid(id) {
+export function markSubscriptionPaid(id, data = {}) {
   return request({
     url: `/subease/subscription/${id}/mark-paid`,
-    method: 'POST'
+    method: 'POST',
+    data
+  })
+}
+
+export function getPaymentRecords(params = {}) {
+  return request({
+    url: '/subease/subscription/payments',
+    method: 'GET',
+    data: params
+  })
+}
+
+export function getSubscriptionPayments(id, limit = 50) {
+  return request({
+    url: `/subease/subscription/${id}/payments`,
+    method: 'GET',
+    data: { limit }
+  })
+}
+
+export function updatePaymentRecord(subscriptionId, paymentId, data = {}) {
+  return request({
+    url: `/subease/subscription/${subscriptionId}/payments/${paymentId}`,
+    method: 'PUT',
+    data
+  })
+}
+
+export function deletePaymentRecord(subscriptionId, paymentId) {
+  return request({
+    url: `/subease/subscription/${subscriptionId}/payments/${paymentId}`,
+    method: 'DELETE'
   })
 }
 

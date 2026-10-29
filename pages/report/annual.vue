@@ -3,11 +3,12 @@
     <view v-if="loading" class="loading">正在生成年度账单...</view>
     <template v-else-if="report">
       <view v-if="missingRates" class="data-warning">部分外币汇率暂不可用，相关金额未计入报告</view>
+      <view v-if="estimatedData" class="data-warning data-warning--estimate">部分月份仍按订阅周期估算；记录付款后会逐步转为真实统计</view>
       <view class="hero">
         <text class="hero-year">{{ report.year }}</text>
         <text class="hero-title">年度订阅账单</text>
         <text class="hero-amount" :style="{ fontSize: amountFontSize(formatCurrency(report.total, 'CNY'), 88, 44, 10) }">{{ formatCurrency(report.total, 'CNY') }}</text>
-        <text class="hero-desc">全年订阅支出（按周期估算）</text>
+        <text class="hero-desc">全年订阅支出{{ estimatedData ? '（含周期估算）' : '（按真实付款记录）' }}</text>
       </view>
 
       <view class="metric-row">
@@ -73,8 +74,15 @@ import {
   getYearlyBreakdown,
   hasMissingRates
 } from '@/utils/subease/helpers'
-import { loadSubscriptionsCache, loadRatesCache, loadAmountsHidden, saveRatesCache } from '@/utils/subease/cache'
+import {
+  loadSubscriptionsCache,
+  loadRatesCache,
+  loadAmountsHidden,
+  saveRatesCache,
+  loadPaymentRecordsCache
+} from '@/utils/subease/cache'
 import { getCurrencyRates } from '@/api/subease/rates'
+import { getPaymentRecords } from '@/api/subease/subscription'
 
 export default {
   data() {
@@ -82,7 +90,8 @@ export default {
       report: null,
       loading: true,
       amountsHidden: loadAmountsHidden(),
-      missingRates: false
+      missingRates: false,
+      estimatedData: false
     }
   },
   onLoad() {
@@ -133,8 +142,17 @@ export default {
           }
         }
         const normalized = normalizeSubscriptions(cached)
-        this.missingRates = hasMissingRates(normalized, rates || {})
-        this.report = getYearlyBreakdown(normalized, rates)
+        const year = new Date().getFullYear()
+        let paymentRecords = loadPaymentRecordsCache() || []
+        try {
+          const remoteRecords = await getPaymentRecords()
+          if (Array.isArray(remoteRecords)) paymentRecords = remoteRecords
+        } catch (error) {
+          console.warn('[AnnualReport] 获取付款历史失败，使用缓存', error.message)
+        }
+        this.missingRates = hasMissingRates(normalized, rates || {}, paymentRecords)
+        this.report = getYearlyBreakdown(normalized, rates, year, paymentRecords)
+        this.estimatedData = Boolean(this.report.estimatedData)
       } catch (error) {
         console.error('[AnnualReport] 生成年度报告失败', error)
         this.report = null
@@ -185,6 +203,11 @@ export default {
   margin-bottom: 24rpx;
   color: var(--warning);
   background: var(--warning-light);
+}
+
+.data-warning--estimate {
+  color: var(--text-secondary);
+  background: var(--bg-muted);
 }
 
 .hero {

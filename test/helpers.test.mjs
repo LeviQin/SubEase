@@ -95,3 +95,65 @@ test('adapts long amount text without truncating it', () => {
   assert.equal(helpers.getAdaptiveAmountFontSize('¥1,234,567.89', 44, 24, 7), '24rpx')
   assert.equal(helpers.getAdaptiveAmountFontSize('¥1,234,567.89', 18, 8, 5), '8rpx')
 })
+
+test('prefers payment snapshots over the current exchange rate in reports', () => {
+  const now = new Date()
+  const paidDate = dateString(now)
+  const list = helpers.normalizeSubscriptions([
+    {
+      id: 4,
+      name: '真实付款',
+      price: 10,
+      currency: 'USD',
+      cycle: '月付',
+      nextDate: paidDate,
+      autoRenew: false
+    }
+  ])
+  const records = [{
+    id: 1,
+    subscriptionId: 4,
+    paidDate,
+    amount: 10,
+    currency: 'USD',
+    fxRate: 7,
+    cnyAmount: 70,
+    cycles: 1,
+    source: 'manual'
+  }]
+  const trend = helpers.getMonthlyTrend(list, { USD: 9 }, 1, records)
+  assert.equal(trend[0].amount, 70)
+  assert.equal(trend.estimatedData, false)
+  assert.equal(helpers.getYearlyBreakdown(list, { USD: 9 }, now.getFullYear(), records).total, 70)
+})
+
+test('marks pre-history estimates and excludes payments without an exchange snapshot', () => {
+  const now = new Date()
+  const paidDate = dateString(now)
+  const list = helpers.normalizeSubscriptions([
+    {
+      id: 5,
+      name: '外币付款',
+      price: 10,
+      currency: 'USD',
+      cycle: '月付',
+      nextDate: paidDate,
+      autoRenew: true
+    }
+  ])
+  const records = [{
+    id: 2,
+    subscriptionId: 5,
+    paidDate,
+    amount: 10,
+    currency: 'USD',
+    fxRate: null,
+    cnyAmount: null,
+    cycles: 1,
+    source: 'auto_renew'
+  }]
+  const trend = helpers.getMonthlyTrend(list, { USD: 7 }, 2, records)
+  assert.equal(trend[trend.length - 1].amount, 0)
+  assert.equal(trend.estimatedData, true)
+  assert.equal(trend.missingRates, true)
+})

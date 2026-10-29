@@ -47,6 +47,7 @@
         :amounts-hidden="amountsHidden"
         :loading="dataLoading && !subscriptions.length"
         :missing-rates="missingRates"
+        :estimated-data="analyticsSummary.estimatedData"
       />
 
       <SubeaseProfileTab
@@ -161,6 +162,77 @@
             <text class="detail-value">{{ currentSubscription.notes || '无' }}</text>
           </view>
         </view>
+        <view class="payment-history-preview">
+          <view class="payment-history-head">
+            <text class="payment-history-title">付款历史</text>
+            <view class="payment-history-link" @click="openPaymentHistorySheet(currentSubscription.id)">查看全部</view>
+          </view>
+          <view v-if="paymentHistoryLoading" class="payment-history-empty">加载中...</view>
+          <view v-else-if="currentPaymentRecords.length" class="payment-history-list payment-history-list--preview">
+            <view v-for="record in currentPaymentRecords.slice(0, 3)" :key="record.id" class="payment-history-item">
+              <view class="payment-history-main">
+                <text class="payment-history-date">{{ formatShortDate(record.paidDate) }}</text>
+                <text class="payment-history-source">{{ paymentSourceLabel(record.source) }}</text>
+              </view>
+              <view class="payment-history-amounts">
+                <text class="payment-history-amount">{{ formatPaymentAmount(record) }}</text>
+                <text v-if="record.currency !== 'CNY' && record.cnyAmount != null" class="payment-history-cny">≈ {{ formatCurrency(record.cnyAmount, 'CNY', amountsHidden) }}</text>
+                <text v-else-if="record.currency !== 'CNY'" class="payment-history-cny is-warning">汇率不可用</text>
+              </view>
+            </view>
+          </view>
+          <view v-else class="payment-history-empty">暂无真实付款记录，当前报表会按订阅周期估算</view>
+        </view>
+      </template>
+
+      <template v-else-if="sheetState.type === 'payment-history'">
+        <view v-if="paymentHistoryLoading" class="sheet-loading">
+          <text class="sheet-loading-text">加载付款历史...</text>
+        </view>
+        <view v-else-if="currentPaymentRecords.length" class="payment-history-list">
+          <view v-for="record in currentPaymentRecords" :key="record.id" class="payment-history-item payment-history-item--sheet">
+            <view class="payment-history-main">
+              <text class="payment-history-date">{{ formatShortDate(record.paidDate) }}</text>
+              <text class="payment-history-source">{{ paymentSourceLabel(record.source) }}</text>
+            </view>
+            <view class="payment-history-amounts">
+              <text class="payment-history-amount">{{ formatPaymentAmount(record) }}</text>
+              <text v-if="record.currency !== 'CNY' && record.cnyAmount != null" class="payment-history-cny">≈ {{ formatCurrency(record.cnyAmount, 'CNY', amountsHidden) }}</text>
+              <text v-else-if="record.currency !== 'CNY'" class="payment-history-cny is-warning">汇率不可用，未计入 CNY 统计</text>
+            </view>
+            <view class="payment-history-actions">
+              <view class="payment-history-action" @click="openPaymentForm(record)">编辑</view>
+              <view class="payment-history-action is-danger" @click="deletePaymentRecordFromHistory(record)">删除</view>
+            </view>
+          </view>
+        </view>
+        <view v-else class="sheet-empty">
+          <text class="sheet-empty-text">暂无付款历史</text>
+        </view>
+      </template>
+
+      <template v-else-if="sheetState.type === 'payment-form'">
+        <view class="payment-form-tip">
+          {{ paymentFormTip }}
+        </view>
+        <view class="form-field">
+          <text class="form-label">实际付款日期</text>
+          <picker mode="date" :value="paymentForm.paidDate" :end="todayText" @change="onPaymentDateChange">
+            <view class="form-input picker-input">{{ paymentForm.paidDate || todayText }}</view>
+          </picker>
+        </view>
+        <view class="form-field">
+          <text class="form-label">实际付款金额（{{ paymentForm.currency }}）</text>
+          <input
+            class="form-input"
+            type="digit"
+            :value="String(paymentForm.amount)"
+            placeholder="请输入实际付款金额"
+            placeholder-class="form-placeholder"
+            @input="paymentForm.amount = $event.detail.value"
+          />
+        </view>
+        <view class="payment-form-note">付款记录会保存付款时的汇率快照；汇率暂不可用时仍保留原币金额。</view>
       </template>
 
       <template v-else-if="sheetState.type === 'confirm-delete'">
@@ -418,6 +490,9 @@ import {
   saveRatesCache,
   saveSubscriptionsCache,
   clearSubscriptionsCache,
+  loadPaymentRecordsCache,
+  savePaymentRecordsCache,
+  clearPaymentRecordsCache,
   loadAmountsHidden,
   saveAmountsHidden
 } from '@/utils/subease/cache'
@@ -431,6 +506,10 @@ import {
   updateSubscription,
   deleteSubscription,
   markSubscriptionPaid,
+  getPaymentRecords,
+  getSubscriptionPayments,
+  updatePaymentRecord,
+  deletePaymentRecord,
   batchDeleteSubscriptions,
   batchImportSubscriptions,
   batchUpdateCategory,
@@ -488,6 +567,17 @@ export default {
         avatarPreviewUrl: ''
       },
       rates: {},
+      paymentRecords: loadPaymentRecordsCache() || [],
+      paymentHistoryLoading: false,
+      paymentFormLoading: false,
+      paymentFormMode: 'create',
+      paymentForm: {
+        id: null,
+        subscriptionId: null,
+        paidDate: '',
+        amount: '',
+        currency: 'CNY'
+      },
       amountsHidden: loadAmountsHidden(),
       feedbackList: [],
       myFeedbacksLoading: false,
@@ -504,7 +594,6 @@ export default {
       importText: '',
       importPreview: null,
       importLoading: false,
-      markPaidLoading: false
     }
   },
   created() {
@@ -564,6 +653,11 @@ export default {
       // 自定义导航栏下方 12px 处展示，避免被导航栏遮挡
       return `${this.statusBarHeight + this.navBarHeight + 12}px`
     },
+    todayText() {
+      const now = new Date()
+      const pad = (value) => String(value).padStart(2, '0')
+      return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+    },
     summaryStats() {
       return getSummaryStats(this.subscriptions, this.rates)
     },
@@ -580,13 +674,13 @@ export default {
       )
     },
     analyticsSummary() {
-      return getAnalyticsSummary(this.subscriptions, this.rates)
+      return getAnalyticsSummary(this.subscriptions, this.rates, this.paymentRecords)
     },
     monthlyTrend() {
-      return getMonthlyTrend(this.subscriptions, this.rates, 6)
+      return getMonthlyTrend(this.subscriptions, this.rates, 6, this.paymentRecords)
     },
     weekExpense() {
-      return getWeekExpense(this.subscriptions, this.rates)
+      return getWeekExpense(this.subscriptions, this.rates, this.paymentRecords)
     },
     soonCount() {
       return countUpcomingSoon(this.subscriptions, 3)
@@ -595,7 +689,23 @@ export default {
       return getSubscriptionHealth(this.subscriptions)
     },
     missingRates() {
-      return hasMissingRates(this.subscriptions, this.rates)
+      return hasMissingRates(this.subscriptions, this.rates, this.paymentRecords)
+    },
+    currentPaymentRecords() {
+      const subscriptionId = Number(this.sheetState.payload?.id || this.paymentForm.subscriptionId)
+      return this.paymentRecords
+        .filter((record) => Number(record.subscriptionId) === subscriptionId)
+        .sort((a, b) => String(b.paidDate).localeCompare(String(a.paidDate)) || Number(b.id) - Number(a.id))
+    },
+    paymentCycleLabel() {
+      const cycle = this.currentSubscription?.cycle
+      return cycle === '季度付' ? '季度' : cycle === '年付' ? '年' : '月'
+    },
+    paymentFormTip() {
+      if (this.paymentFormMode === 'edit') {
+        return '修改只会影响历史统计，不会改变订阅的下次付款日。'
+      }
+      return `默认记录今天（${this.todayText}），提交后下次付款日会顺延一个${this.paymentCycleLabel}。`
     },
     profileReminderRemain() {
       const authStore = useSubeaseAuthStore()
@@ -655,6 +765,8 @@ export default {
         filter: '筛选',
         'manage-categories': '管理自定义分类',
         detail: this.currentSubscription?.name || '详情',
+        'payment-history': `${this.currentSubscription?.name || '订阅'} · 付款历史`,
+        'payment-form': this.paymentFormMode === 'edit' ? '编辑付款记录' : '记录付款',
         'confirm-delete': '确认删除',
         'batch-delete': '批量删除',
         login: '微信登录',
@@ -745,13 +857,22 @@ export default {
           ...(canMarkPaid
             ? [{
                 key: 'mark-paid',
-                text: this.markPaidLoading ? '记录中...' : '记录付款',
+                text: this.paymentFormLoading ? '记录中...' : '记录付款',
                 type: 'primary',
-                disabled: this.markPaidLoading
+                disabled: this.paymentFormLoading
               }]
             : []),
-          { key: 'edit', text: '编辑', type: 'secondary', disabled: this.markPaidLoading },
-          { key: 'delete', text: '删除', type: 'danger', disabled: this.markPaidLoading }
+          { key: 'edit', text: '编辑', type: 'secondary', disabled: this.paymentFormLoading },
+          { key: 'delete', text: '删除', type: 'danger', disabled: this.paymentFormLoading }
+        ]
+      }
+      if (t === 'payment-history') {
+        return [{ key: 'close', text: '关闭', type: 'secondary' }]
+      }
+      if (t === 'payment-form') {
+        return [
+          { key: 'cancel', text: '取消', type: 'secondary', disabled: this.paymentFormLoading },
+          { key: 'payment-save', text: this.paymentFormLoading ? '保存中...' : '保存', type: 'primary', disabled: this.paymentFormLoading }
         ]
       }
       if (t === 'confirm-delete' || t === 'batch-delete') {
@@ -833,6 +954,7 @@ export default {
           return
         }
         this.subscriptions = []
+        this.paymentRecords = []
       },
       immediate: true
     },
@@ -845,6 +967,7 @@ export default {
       }
       if (!this.authReady) return
       this.subscriptions = []
+      this.paymentRecords = []
       if (this.activeTab !== 'profile') {
         this.activeTab = 'profile'
       }
@@ -936,6 +1059,7 @@ export default {
     async fetchSubscriptions(options = {}) {
       if (!this.loggedIn) {
         this.subscriptions = []
+        this.paymentRecords = []
         return
       }
       if (this.dataLoading) return
@@ -957,6 +1081,7 @@ export default {
         const normalized = normalizeSubscriptions(list || [])
         this.subscriptions = normalized
         saveSubscriptionsCache(normalized)
+        await this.loadPaymentRecords({ silent: true })
         const serverRemindDays = Number(authStore.userInfo?.defaultRemindDays)
         if (Number.isInteger(serverRemindDays) && serverRemindDays > 0) {
           this.settingsRemindDays = serverRemindDays
@@ -979,6 +1104,39 @@ export default {
         }
       } finally {
         this.dataLoading = false
+      }
+    },
+    async loadPaymentRecords(options = {}) {
+      if (!this.loggedIn) {
+        this.paymentRecords = []
+        return
+      }
+      try {
+        const cached = loadPaymentRecordsCache()
+        if (cached && cached.length && !this.paymentRecords.length) {
+          this.paymentRecords = cached
+        }
+        const records = await getPaymentRecords()
+        this.paymentRecords = Array.isArray(records) ? records : []
+        savePaymentRecordsCache(this.paymentRecords)
+      } catch (error) {
+        console.warn('[Subease] 获取付款历史失败', error)
+        if (!options.silent) this.showToast(error.message || '付款历史加载失败')
+      }
+    },
+    async loadSubscriptionPayments(subscriptionId, options = {}) {
+      if (!this.loggedIn || !subscriptionId) return
+      this.paymentHistoryLoading = true
+      try {
+        const records = await getSubscriptionPayments(subscriptionId)
+        const others = this.paymentRecords.filter((item) => Number(item.subscriptionId) !== Number(subscriptionId))
+        this.paymentRecords = [...others, ...(Array.isArray(records) ? records : [])]
+        savePaymentRecordsCache(this.paymentRecords)
+      } catch (error) {
+        console.warn('[Subease] 获取订阅付款历史失败', error)
+        if (!options.silent) this.showToast(error.message || '付款历史加载失败')
+      } finally {
+        this.paymentHistoryLoading = false
       }
     },
     formatCurrency,
@@ -1183,6 +1341,120 @@ export default {
     openDetailSheet(id) {
       if (!this.requireLogin()) return
       this.openSheet('detail', { id })
+      this.loadSubscriptionPayments(id, { silent: true })
+    },
+    openPaymentHistorySheet(subscriptionId = this.currentSubscription?.id) {
+      if (!this.requireLogin() || !subscriptionId) return
+      this.openSheet('payment-history', { id: subscriptionId })
+      this.loadSubscriptionPayments(subscriptionId)
+    },
+    formatPaymentAmount(record) {
+      return this.formatCurrency(record.amount, record.currency, this.amountsHidden)
+    },
+    paymentSourceLabel(source) {
+      return source === 'auto_renew' ? '自动续期' : '手动付款'
+    },
+    openPaymentForm(record = null) {
+      if (!this.requireLogin()) return
+      const subscriptionId = Number(record?.subscriptionId || this.currentSubscription?.id)
+      const subscription = this.subscriptions.find((item) => Number(item.id) === subscriptionId)
+      if (!subscription) return
+      this.paymentFormMode = record ? 'edit' : 'create'
+      this.paymentForm = {
+        id: record?.id || null,
+        subscriptionId,
+        paidDate: record?.paidDate || this.todayText,
+        amount: record?.amount ?? subscription.price,
+        currency: record?.currency || subscription.currency
+      }
+      this.paymentFormLoading = false
+      this.openSheet('payment-form', {
+        id: subscriptionId,
+        returnTo: this.sheetState.type === 'payment-history' ? 'payment-history' : 'detail'
+      })
+    },
+    onPaymentDateChange(event) {
+      this.paymentForm = {
+        ...this.paymentForm,
+        paidDate: event.detail.value
+      }
+    },
+    async savePaymentForm() {
+      if (!this.requireLogin() || this.paymentFormLoading) return
+      const subscriptionId = Number(this.paymentForm.subscriptionId)
+      const subscription = this.subscriptions.find((item) => Number(item.id) === subscriptionId)
+      if (!subscription) return
+      const paidDate = String(this.paymentForm.paidDate || '').trim()
+      const amount = Number(this.paymentForm.amount)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(paidDate) || paidDate > this.todayText) {
+        this.showToast('付款日期不能晚于今天')
+        return
+      }
+      if (!Number.isFinite(amount) || amount <= 0) {
+        this.showToast('请输入有效付款金额')
+        return
+      }
+
+      this.paymentFormLoading = true
+      try {
+        if (this.paymentFormMode === 'edit') {
+          const updated = await updatePaymentRecord(subscriptionId, this.paymentForm.id, {
+            paidDate,
+            amount: Math.round(amount * 100) / 100
+          })
+          this.paymentRecords = this.paymentRecords.map((item) => item.id === updated.id ? updated : item)
+          savePaymentRecordsCache(this.paymentRecords)
+          this.showToast('付款记录已更新')
+        } else {
+          const updatedSubscription = await markSubscriptionPaid(subscriptionId, {
+            paidDate,
+            amount: Math.round(amount * 100) / 100,
+            requestId: `manual-${subscriptionId}-${Date.now()}`
+          })
+          const index = this.subscriptions.findIndex((item) => Number(item.id) === subscriptionId)
+          if (index >= 0) {
+            const nextList = [...this.subscriptions]
+            nextList.splice(index, 1, updatedSubscription)
+            this.subscriptions = normalizeSubscriptions(nextList)
+            saveSubscriptionsCache(this.subscriptions)
+          }
+          await this.loadSubscriptionPayments(subscriptionId, { silent: true })
+          this.showToast('已记录付款，下次付款日已顺延')
+        }
+        const returnTo = this.sheetState.payload?.returnTo
+        if (returnTo === 'payment-history') {
+          this.openSheet('payment-history', { id: subscriptionId })
+        } else {
+          this.closeSheet()
+        }
+      } catch (error) {
+        this.showToast(error.message || (this.paymentFormMode === 'edit' ? '更新付款记录失败，请重试' : '记录付款失败，请重试'))
+      } finally {
+        this.paymentFormLoading = false
+      }
+    },
+    deletePaymentRecordFromHistory(record) {
+      if (!record || this.paymentHistoryLoading) return
+      uni.showModal({
+        title: '删除付款记录',
+        content: `确定删除 ${this.formatShortDate(record.paidDate)} 的付款记录吗？删除只会修正历史和报表，不会改变下次付款日。`,
+        confirmText: '删除',
+        confirmColor: '#FF3B30',
+        success: async (result) => {
+          if (!result.confirm) return
+          this.paymentHistoryLoading = true
+          try {
+            await deletePaymentRecord(record.subscriptionId, record.id)
+            this.paymentRecords = this.paymentRecords.filter((item) => item.id !== record.id)
+            savePaymentRecordsCache(this.paymentRecords)
+            this.showToast('付款记录已删除')
+          } catch (error) {
+            this.showToast(error.message || '删除付款记录失败，请重试')
+          } finally {
+            this.paymentHistoryLoading = false
+          }
+        }
+      })
     },
     openDeleteSheet(id) {
       if (!this.requireLogin()) return
@@ -1378,7 +1650,9 @@ export default {
       try {
         await deleteSubscription(id)
         this.subscriptions = normalizeSubscriptions(this.subscriptions.filter((item) => item.id !== id))
+        this.paymentRecords = this.paymentRecords.filter((item) => Number(item.subscriptionId) !== Number(id))
         saveSubscriptionsCache(this.subscriptions)
+        savePaymentRecordsCache(this.paymentRecords)
         this.selectedIds = this.selectedIds.filter((item) => item !== id)
         this.closeSheet()
         this.showToast('已删除')
@@ -1388,42 +1662,14 @@ export default {
       }
     },
     async markCurrentSubscriptionPaid() {
-      if (!this.requireLogin() || this.markPaidLoading) return
+      if (!this.requireLogin() || this.paymentFormLoading) return
       const subscription = this.currentSubscription
       if (!subscription) return
       if (Number(subscription.paidCycles || 1) > 1 && Number(subscription.days || 0) > 0) {
         this.showToast('该订阅仍处于预付覆盖期，请到期后再记录付款')
         return
       }
-
-      const result = await new Promise((resolve) => {
-        uni.showModal({
-          title: '记录付款',
-          content: `确认已支付「${subscription.name}」？下次付款日将顺延一个${subscription.cycle === '季度付' ? '季度' : subscription.cycle === '年付' ? '年' : '月'}。`,
-          confirmText: '确认',
-          success: resolve,
-          fail: () => resolve({ confirm: false })
-        })
-      })
-      if (!result.confirm) return
-
-      this.markPaidLoading = true
-      try {
-        const updated = await markSubscriptionPaid(subscription.id)
-        const index = this.subscriptions.findIndex((item) => item.id === subscription.id)
-        if (index >= 0) {
-          const nextList = [...this.subscriptions]
-          nextList.splice(index, 1, updated)
-          this.subscriptions = normalizeSubscriptions(nextList)
-          saveSubscriptionsCache(this.subscriptions)
-        }
-        this.closeSheet()
-        this.showToast('已记录付款，下次付款日已顺延')
-      } catch (error) {
-        this.showToast(error.message || '记录付款失败，请重试')
-      } finally {
-        this.markPaidLoading = false
-      }
+      this.openPaymentForm()
     },
     async confirmBatchDelete() {
       if (!this.requireLogin()) return
@@ -1432,7 +1678,9 @@ export default {
         this.subscriptions = normalizeSubscriptions(
           this.subscriptions.filter((item) => !this.selectedIds.includes(item.id))
         )
+        this.paymentRecords = this.paymentRecords.filter((item) => !this.selectedIds.includes(Number(item.subscriptionId)))
         saveSubscriptionsCache(this.subscriptions)
+        savePaymentRecordsCache(this.paymentRecords)
         this.selectedIds = []
         this.closeSheet()
         this.showToast('已删除')
@@ -1761,6 +2009,8 @@ export default {
       this.filterCategory = ''
       this.selectedIds = []
       clearSubscriptionsCache()
+      clearPaymentRecordsCache()
+      this.paymentRecords = []
       this.showToast('已退出')
     },
     showToast(message) {
@@ -1787,13 +2037,14 @@ export default {
       else if (key === 'mark-paid' && t === 'detail') this.markCurrentSubscriptionPaid()
       else if (key === 'edit') this.openAddSheet(this.currentSubscription?.id)
       else if (key === 'delete') this.openDeleteSheet(this.currentSubscription?.id)
-      else if (key === 'cancel' && (t === 'confirm-delete' || t === 'batch-delete' || t === 'form' || t === 'feedback' || t === 'profile-sync' || t === 'import')) this.closeSheet()
+      else if (key === 'cancel' && (t === 'confirm-delete' || t === 'batch-delete' || t === 'form' || t === 'feedback' || t === 'profile-sync' || t === 'import' || t === 'payment-form')) this.closeSheet()
       else if (key === 'delete-confirm' && t === 'confirm-delete') this.confirmDelete()
       else if (key === 'delete-confirm' && t === 'batch-delete') this.confirmBatchDelete()
       else if (key === 'cancel-login' && t === 'login') this.cancelLoginSheet()
       else if (key === 'submit-wechat-profile' && t === 'login') this.handleLogin()
       else if (key === 'submit-wechat-profile' && t === 'profile-sync') this.syncWeChatProfile()
       else if (key === 'save') this.saveForm()
+      else if (key === 'payment-save' && t === 'payment-form') this.savePaymentForm()
       else if (key === 'submit-feedback') this.submitFeedbackForm()
       else if (key === 'close') {
         const returnTo =
@@ -2167,6 +2418,137 @@ export default {
 
 .detail-grid .detail-row:last-child {
   margin-bottom: 0;
+}
+
+.payment-history-preview {
+  padding: 24rpx;
+  margin-top: 20rpx;
+  background: var(--bg-subtle);
+  border-radius: var(--radius-control);
+}
+
+.payment-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+
+.payment-history-title {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.payment-history-link {
+  font-size: 24rpx;
+  color: var(--accent);
+}
+
+.payment-history-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.payment-history-item {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 0;
+  border-bottom: 1px solid var(--separator);
+}
+
+.payment-history-item:last-child {
+  border-bottom: 0;
+}
+
+.payment-history-item--sheet {
+  flex-wrap: wrap;
+  padding: 24rpx 0;
+}
+
+.payment-history-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.payment-history-date {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.payment-history-source {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: var(--text-tertiary);
+}
+
+.payment-history-amounts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  max-width: 58%;
+  min-width: 0;
+}
+
+.payment-history-amount,
+.payment-history-cny {
+  max-width: 100%;
+  font-size: 26rpx;
+  color: var(--text-primary);
+  text-align: right;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.payment-history-cny {
+  margin-top: 4rpx;
+  font-size: 21rpx;
+  color: var(--text-tertiary);
+}
+
+.payment-history-cny.is-warning {
+  color: var(--warning);
+}
+
+.payment-history-actions {
+  display: flex;
+  flex-basis: 100%;
+  justify-content: flex-end;
+  margin-top: 16rpx;
+}
+
+.payment-history-action {
+  padding: 8rpx 20rpx;
+  margin-left: 12rpx;
+  border-radius: var(--radius-pill);
+  font-size: 22rpx;
+  color: var(--accent);
+  background: var(--bg-accent);
+}
+
+.payment-history-action.is-danger {
+  color: var(--danger);
+  background: var(--danger-light);
+}
+
+.payment-history-empty,
+.payment-form-note,
+.payment-form-tip {
+  display: block;
+  font-size: 23rpx;
+  line-height: 1.6;
+  color: var(--text-tertiary);
+}
+
+.payment-form-tip {
+  padding: 8rpx 0 24rpx;
+}
+
+.payment-form-note {
+  padding: 0 4rpx 24rpx;
 }
 
 .detail-row {

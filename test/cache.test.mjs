@@ -28,3 +28,12 @@ test('does not expose legacy unscoped subscription cache', () => {
   storage.set('subease-subscriptions-cache', { list: [{ id: 2, name: '旧缓存' }] })
   assert.equal(cache.loadSubscriptionsCache(), null)
 })
+
+test('keeps payment history cache isolated to the signed-in user', () => {
+  storage.set('subease-auth', { userInfo: { id: 10 } })
+  cache.savePaymentRecordsCache([{ id: 1, subscriptionId: 3 }])
+  assert.equal(cache.loadPaymentRecordsCache()[0].subscriptionId, 3)
+
+  storage.set('subease-auth', { userInfo: { id: 11 } })
+  assert.equal(cache.loadPaymentRecordsCache(), null)
+})

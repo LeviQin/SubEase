@@ -95,6 +95,78 @@ function getActualPaymentEvents(item, startDate, endDate, rates = {}) {
   return events
 }
 
+function getLegacyPaymentEvents(item, startDate, endDate, rates = {}) {
+  const amount = toCny(item.price, item.currency, rates)
+  if (!amount) return []
+  const anchor = parseDate(item.displayDate || item.nextDate)
+  const cycleMonths = CYCLE_MONTHS_MAP[item.cycle] || 1
+  const anchorDay = anchor.getDate()
+  const events = []
+  for (let offset = -120; offset <= 120; offset += 1) {
+    const date = addMonthsClamped(anchor, offset * cycleMonths, anchorDay)
+    if (date < startDate || date >= endDate) continue
+    // 没有历史记录的手动续费订阅，只能确认锚点之后的扣款。
+    if (offset < 0 && !item.autoRenew) continue
+    events.push({ date, amount })
+  }
+  return events
+}
+
+function getPaymentRecordsForSubscription(paymentRecords, subscriptionId) {
+  const id = Number(subscriptionId)
+  return (Array.isArray(paymentRecords) ? paymentRecords : []).filter(
+    (record) => Number(record.subscriptionId) === id
+  )
+}
+
+function getPaymentEvents(item, startDate, endDate, rates = {}, paymentRecords = []) {
+  const records = getPaymentRecordsForSubscription(paymentRecords, item.id)
+  if (!records.length) {
+    return {
+      events: null,
+      estimated: true,
+      missingRates: false,
+      hasHistory: false
+    }
+  }
+
+  const recordDates = records
+    .map((record) => parseDate(record.paidDate))
+    .filter((date) => date && !Number.isNaN(date.getTime()))
+  const firstRecordDate = recordDates.length
+    ? new Date(Math.min(...recordDates.map((date) => date.getTime())))
+    : endDate
+  const events = []
+  let missingRates = false
+
+  records.forEach((record) => {
+    const date = parseDate(record.paidDate)
+    if (date < startDate || date >= endDate) return
+    const amount = Number(record.cnyAmount)
+    if (record.cnyAmount == null || !Number.isFinite(amount)) {
+      missingRates = true
+      return
+    }
+    events.push({
+      date,
+      amount: amount * Math.max(1, Number(record.cycles) || 1),
+      recorded: true
+    })
+  })
+
+  let estimated = false
+  if (startDate < firstRecordDate) {
+    const legacyEnd = firstRecordDate < endDate ? firstRecordDate : endDate
+    const legacyEvents = getLegacyPaymentEvents(item, startDate, legacyEnd, rates)
+    if (legacyEvents.length) {
+      events.push(...legacyEvents)
+      estimated = true
+    }
+  }
+
+  return { events, estimated, missingRates, hasHistory: true }
+}
+
 // ═══ 金额工具 ═══
 
 export function getCurrencySymbol(currency) {
@@ -131,12 +203,16 @@ function toCny(price, currency, rates) {
   return Number(price || 0) * rate
 }
 
-export function hasMissingRates(subscriptions, rates = {}) {
-  return (Array.isArray(subscriptions) ? subscriptions : []).some((item) => {
+export function hasMissingRates(subscriptions, rates = {}, paymentRecords = []) {
+  const subscriptionMissing = (Array.isArray(subscriptions) ? subscriptions : []).some((item) => {
     const code = String(item.currency || 'CNY').toUpperCase()
     const rate = Number((rates || {})[code])
     return code !== 'CNY' && (!Number.isFinite(rate) || rate <= 0)
   })
+  const paymentMissing = (Array.isArray(paymentRecords) ? paymentRecords : []).some(
+    (record) => record && record.cnyAmount == null && String(record.currency || 'CNY').toUpperCase() !== 'CNY'
+  )
+  return subscriptionMissing || paymentMissing
 }
 
 // ═══ 到期日滚动：订阅过期后自动续算到下一周期 ═══
@@ -312,15 +388,16 @@ export function getSummaryStats(subscriptions, rates = {}) {
   }
 }
 
-export function getAnalyticsSummary(subscriptions, rates = {}) {
+export function getAnalyticsSummary(subscriptions, rates = {}, paymentRecords = []) {
   const list = Array.isArray(subscriptions) ? subscriptions : []
   const activeList = list.filter((item) => item.status !== 'expired')
 
   // 月均/年度支出（复用 getSummaryStats 的折算逻辑）
   const { currentMonthTotal, monthlyTotal, yearlyTotal, nextMonthTotal } = getSummaryStats(list, rates)
 
-  // 本月预计支出：优先使用明确的上次扣款记录，其余按周期推算。
-  const totalSpend = currentMonthTotal
+  // 本月支出：有付款历史时优先使用真实记录；旧订阅继续按周期估算。
+  const currentTrend = getMonthlyTrend(list, rates, 1, paymentRecords)
+  const totalSpend = paymentRecords.length ? (currentTrend[0]?.amount || 0) : currentMonthTotal
 
   const monthlyCost = (item) => {
     const cny = toCny(item.price, item.currency, rates)
@@ -383,13 +460,15 @@ export function getAnalyticsSummary(subscriptions, rates = {}) {
     categoryStats,
     cycleStats,
     topSpenders,
-    nextMonthTotal
+    nextMonthTotal,
+    estimatedData: Boolean(currentTrend.estimatedData),
+    missingRates: Boolean(currentTrend.missingRates) || hasMissingRates(list, rates, paymentRecords)
   }
 }
 
 // ═══ 年度账单：按实际扣款与订阅周期估算指定自然年 1-12 月的扣款分布 ═══
 
-export function getYearlyBreakdown(subscriptions, rates = {}, year = new Date().getFullYear()) {
+export function getYearlyBreakdown(subscriptions, rates = {}, year = new Date().getFullYear(), paymentRecords = []) {
   const list = Array.isArray(subscriptions) ? subscriptions : []
   const yearStart = new Date(year, 0, 1)
   const yearEnd = new Date(year + 1, 0, 1)
@@ -403,7 +482,18 @@ export function getYearlyBreakdown(subscriptions, rates = {}, year = new Date().
     })
   }
 
+  let estimatedData = false
+  let missingRates = false
   list.forEach((item) => {
+    const paymentEvents = getPaymentEvents(item, yearStart, yearEnd, rates, paymentRecords)
+    if (!paymentEvents.hasHistory || paymentEvents.estimated) estimatedData = true
+    if (paymentEvents.missingRates) missingRates = true
+    if (paymentEvents.events) {
+      paymentEvents.events.forEach((event) => {
+        months[event.date.getMonth()].amount += event.amount
+      })
+      return
+    }
     const cycleMonths = CYCLE_MONTHS_MAP[item.cycle] || 1
     const amount = toCny(item.price, item.currency, rates)
     if (!amount) return
@@ -438,6 +528,15 @@ export function getYearlyBreakdown(subscriptions, rates = {}, year = new Date().
   // TOP 订阅：按年内实际/估算扣款总额
   const topMap = {}
   list.forEach((item) => {
+    const paymentEvents = getPaymentEvents(item, yearStart, yearEnd, rates, paymentRecords)
+    if (paymentEvents.events) {
+      const actualTotal = paymentEvents.events.reduce((sum, event) => sum + event.amount, 0)
+      if (actualTotal > 0) {
+        const key = String(item.name || '未命名')
+        topMap[key] = (topMap[key] || 0) + actualTotal
+      }
+      return
+    }
     const actualEvents = getActualPaymentEvents(item, yearStart, yearEnd, rates)
     if (actualEvents) {
       const actualTotal = actualEvents.reduce((sum, event) => sum + event.amount, 0)
@@ -474,7 +573,9 @@ export function getYearlyBreakdown(subscriptions, rates = {}, year = new Date().
     total: roundMoney(total),
     monthlyAverage,
     peakMonth: { label: peakMonth.label, amount: roundMoney(peakMonth.amount) },
-    topSubscriptions
+    topSubscriptions,
+    estimatedData,
+    missingRates
   }
 }
 
@@ -485,7 +586,7 @@ export function getYearlyBreakdown(subscriptions, rates = {}, year = new Date().
  * 以每条订阅的 displayDate（下一次扣款日）为锚点，往前每 cycleMonths 个月发生一次扣款；
  * 命中目标月则计入当月。已过期自动续费的订阅会把「滚动前当月已发生的扣款」正确归入历史。
  */
-export function getMonthlyTrend(subscriptions, rates = {}, months = 6) {
+export function getMonthlyTrend(subscriptions, rates = {}, months = 6, paymentRecords = []) {
   const list = Array.isArray(subscriptions) ? subscriptions : []
   const now = new Date()
   const buckets = []
@@ -512,7 +613,20 @@ export function getMonthlyTrend(subscriptions, rates = {}, months = 6) {
     1
   )
 
+  let estimatedData = false
+  let missingRates = false
   list.forEach((item) => {
+    const paymentEvents = getPaymentEvents(item, rangeStart, rangeEnd, rates, paymentRecords)
+    if (!paymentEvents.hasHistory || paymentEvents.estimated) estimatedData = true
+    if (paymentEvents.missingRates) missingRates = true
+    if (paymentEvents.events) {
+      paymentEvents.events.forEach((event) => {
+        const monthIndex = event.date.getFullYear() * 12 + event.date.getMonth()
+        const bucket = buckets.find((itemBucket) => itemBucket.monthIndex === monthIndex)
+        if (bucket) bucket.amount += event.amount
+      })
+      return
+    }
     const cycleMonths = CYCLE_MONTHS_MAP[item.cycle] || 1
     const amount = toCny(item.price, item.currency, rates)
     if (!amount) return
@@ -533,7 +647,10 @@ export function getMonthlyTrend(subscriptions, rates = {}, months = 6) {
     })
   })
 
-  return buckets.map((bucket) => ({ ...bucket, amount: roundMoney(bucket.amount) }))
+  const result = buckets.map((bucket) => ({ ...bucket, amount: roundMoney(bucket.amount) }))
+  result.estimatedData = estimatedData
+  result.missingRates = missingRates
+  return result
 }
 
 // 近 N 天内到期的订阅数量（供 tab 红点等提醒使用）
@@ -612,7 +729,7 @@ export function getSubscriptionHealth(subscriptions) {
 
 // ═══ 本周支出：displayDate 落在本周（周一至周日）的扣款合计 ═══
 
-export function getWeekExpense(subscriptions, rates = {}) {
+export function getWeekExpense(subscriptions, rates = {}, paymentRecords = []) {
   const list = Array.isArray(subscriptions) ? subscriptions : []
   const now = new Date()
   const day = now.getDay()
@@ -622,7 +739,17 @@ export function getWeekExpense(subscriptions, rates = {}) {
 
   let total = 0
   let count = 0
+  let estimatedData = false
+  let missingRates = false
   list.forEach((item) => {
+    const paymentEvents = getPaymentEvents(item, monday, sundayEnd, rates, paymentRecords)
+    if (!paymentEvents.hasHistory || paymentEvents.estimated) estimatedData = true
+    if (paymentEvents.missingRates) missingRates = true
+    if (paymentEvents.events) {
+      total += paymentEvents.events.reduce((sum, event) => sum + event.amount, 0)
+      count += paymentEvents.events.length
+      return
+    }
     const actualEvents = getActualPaymentEvents(item, monday, sundayEnd, rates)
     if (actualEvents) {
       total += actualEvents.reduce((sum, event) => sum + event.amount, 0)
@@ -637,7 +764,7 @@ export function getWeekExpense(subscriptions, rates = {}) {
       count += 1
     }
   })
-  return { total: roundMoney(total), count }
+  return { total: roundMoney(total), count, estimatedData, missingRates }
 }
 
 export function createSubscriptionPayload(formState, currentFilter) {

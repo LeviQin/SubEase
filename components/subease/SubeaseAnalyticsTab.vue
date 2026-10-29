@@ -3,6 +3,7 @@
     <view v-if="loading" class="loading-state">正在计算支出数据...</view>
     <template v-else-if="analytics.count > 0">
       <view v-if="missingRates" class="data-warning">部分外币汇率暂不可用，相关金额未计入合计</view>
+      <view v-if="estimatedData" class="data-warning data-warning--estimate">部分数据仍按订阅周期估算；记录付款后会逐步转为真实统计</view>
       <view class="section-label">支出</view>
 
       <view class="metric-row">
@@ -59,7 +60,7 @@
             <text class="trend-label">{{ item.shortLabel }}</text>
           </view>
         </view>
-        <text class="trend-note">按订阅周期估算（含本月未到期扣款），点击柱子查看详情</text>
+        <text class="trend-note">{{ estimatedData ? '真实付款与周期估算混合展示' : '按真实付款记录统计' }}，点击柱子查看详情</text>
       </view>
 
       <view class="section-label">分类月均支出</view>
@@ -141,6 +142,10 @@ export default {
     missingRates: {
       type: Boolean,
       default: false
+    },
+    estimatedData: {
+      type: Boolean,
+      default: false
     }
   },
   methods: {
@@ -188,6 +193,11 @@ export default {
   border-radius: var(--radius-control);
   font-size: 24rpx;
   line-height: 1.5;
+}
+
+.data-warning--estimate {
+  color: var(--text-secondary);
+  background: var(--bg-muted);
 }
 
 .loading-state {

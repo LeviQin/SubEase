@@ -3,6 +3,7 @@
 import { MAX_CUSTOM_CATEGORIES } from './constants'
 
 const SUBSCRIPTIONS_CACHE_KEY = 'subease-subscriptions-cache'
+const PAYMENT_RECORDS_CACHE_KEY = 'subease-payment-records-cache'
 const RATES_CACHE_KEY = 'subease-rates-cache'
 const CUSTOM_CATEGORIES_KEY = 'subease-custom-categories'
 const AMOUNTS_HIDDEN_KEY = 'subease-amounts-hidden'
@@ -41,6 +42,34 @@ export function saveSubscriptionsCache(list) {
 export function clearSubscriptionsCache() {
   try {
     uni.removeStorageSync(SUBSCRIPTIONS_CACHE_KEY)
+  } catch {
+    // ignore
+  }
+}
+
+export function loadPaymentRecordsCache() {
+  const data = safeParse(uni.getStorageSync(PAYMENT_RECORDS_CACHE_KEY))
+  if (!data || !Array.isArray(data.list)) return null
+  const auth = safeParse(uni.getStorageSync(AUTH_STORAGE_KEY))
+  const currentUserId = Number(auth?.userInfo?.id || 0)
+  if (!currentUserId || Number(data.userId || 0) !== currentUserId) return null
+  return data.list
+}
+
+export function savePaymentRecordsCache(list) {
+  try {
+    const auth = safeParse(uni.getStorageSync(AUTH_STORAGE_KEY))
+    const userId = Number(auth?.userInfo?.id || 0)
+    if (!userId) return
+    uni.setStorageSync(PAYMENT_RECORDS_CACHE_KEY, { userId, list, savedAt: Date.now() })
+  } catch {
+    // 存储满等场景静默失败
+  }
+}
+
+export function clearPaymentRecordsCache() {
+  try {
+    uni.removeStorageSync(PAYMENT_RECORDS_CACHE_KEY)
   } catch {
     // ignore
   }
