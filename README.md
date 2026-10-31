@@ -1,139 +1,99 @@
 # 归期本（Qizhangben）
 
-一款基于微信小程序的**订阅管理与到期提醒**工具。记录会员/订阅服务的价格、周期与到期日，支持多币种折算、支出分析与到期推送提醒。
+一款基于 uni-app 的微信小程序订阅管理与到期提醒工具。记录会员/订阅服务的价格、周期与到期日，支持多币种折算、支出分析与到期提醒。
+
+本仓库包含小程序前端代码。运行完整功能需要配置可用的服务接口。
 
 ## 功能特性
 
-- **微信登录**：`wx.login` 静默登录 + 头像昵称表单完善资料（两段式，资料缺失自动回补）
-- **订阅管理**：增删改查、分类/周期筛选、搜索排序、多选批量删除、记录真实付款并顺延周期、付款历史纠错、到期自动续算（过期自动滚动到下一周期）
-- **热门订阅预设库**：内置 30+ 常见订阅一键添加，支持搜索
-- **批量导入**：支持直接粘贴「导出数据」生成的 CSV（含表头），整批校验、事务写入、重名自动跳过
-- **到期提醒**：微信订阅消息推送（一次性授权，可配置提前 N 天提醒）
-- **订阅健康分**：按过期/自动续费占比/重复分类等评分，给出省钱建议
-- **汇率折算**：接入实时汇率（open.er-api.com），支持 USD/EUR 等多币种统一按 CNY 汇总
-- **支出分析**：本月/月均/年度预计、本周支出、近 6 月趋势、分类与周期分布、高消费排行、下月扣款预测；优先使用真实付款历史，并支持月度预算、预算历史复盘、超支提示和节省建议
-- **年度账单报告**：全年支出分布、月度柱状图、预算对照、TOP 订阅，支持一键分享；无历史月份明确标注估算
-- **数据导出**：支持可重新导入的 CSV 与 Excel 文件（Android 直接保存 / iOS 打开另存），30 分钟有效
-- **反馈闭环**：提交反馈 → 后台处理 → 回复与未读标记
-- **轻量埋点**：启动/登录/订阅增删/反馈/导出等关键行为静默上报
-- **隐私合规**：内置用户协议与隐私政策页面
+- **微信登录**：静默登录，并支持头像与昵称资料完善
+- **订阅管理**：增删改查、分类/周期筛选、搜索排序、多选批量删除
+- **付款记录**：记录实际付款、付款历史修正与自动续期记录
+- **热门订阅预设**：内置常见订阅服务，可搜索后一键添加
+- **批量导入**：支持粘贴带表头的 CSV，整批校验并跳过重名记录
+- **到期提醒**：支持设置提前提醒天数和微信订阅消息授权
+- **订阅健康分**：根据过期、自动续费和重复分类等情况给出省钱建议
+- **汇率折算**：支持多币种，并按汇率折算为 CNY 汇总
+- **支出分析**：月度、年度、趋势、分类、周期、高消费和下月扣款预测
+- **年度账单**：展示全年支出分布、预算对照和高消费订阅
+- **月度预算**：预算设置、超支提示和最近月份复盘
+- **数据导出**：支持可重新导入的 CSV 与 Excel 文件
+- **反馈提交**：提交问题或建议，并查看反馈处理状态
+- **协议页面**：内置用户服务协议页面
 - **深色模式**：跟随系统外观自动切换
-- **本地缓存**：订阅列表按账号隔离缓存，汇率本地缓存，弱网/离线可用
+- **本地缓存**：按账号隔离订阅与付款记录缓存，支持弱网场景
 
 ## 技术栈
 
-| 层 | 技术 |
-|----|------|
-| 前端 | uni-app（Vue 3 + Pinia，兼容 Vue 2） |
-| 后端 | Koa2 + MySQL + JWT + Socket.IO + 腾讯云 COS |
-| 管理端 | Vue 3 + Vite + Element Plus（`levi-blog-admin`） |
-| 部署 | 微信小程序（MP-WEIXIN） |
+| 项目 | 技术 |
+|------|------|
+| 框架 | uni-app |
+| 前端 | Vue 3 + Pinia |
+| 目标平台 | 微信小程序（MP-WEIXIN） |
+| 测试 | Node.js 内置测试运行器 |
 
 ## 目录结构
 
-```
+```text
 SubEase/
-├── api/subease/            # 接口封装（auth / subscription / notify / rates / feedback）
-├── components/subease/     # 页面组件（Tab 栏、表单、弹层等）
+├── api/subease/            # 登录、订阅、提醒、汇率和反馈请求封装
+├── components/subease/     # 页面组件与弹层
 ├── pages/
-│   ├── index/index.vue     # 主页面（首页/订阅/分析/我的 四 Tab）
-│   └── legal/              # 用户协议、隐私政策
-├── stores/subease/         # Pinia 状态（auth 登录态）
+│   ├── index/index.vue     # 首页、订阅、分析和个人中心
+│   ├── legal/              # 用户协议页面
+│   └── report/             # 年度账单报告
+├── stores/subease/         # Pinia 状态管理
+├── test/                   # Node.js 单元测试
 ├── utils/subease/
-│   ├── config.js           # API 地址、订阅消息模板 ID
-│   ├── request.js          # 请求封装（超时、401 自动刷新 token）
-│   ├── helpers.js          # 金额折算 / 统计 / 分析 / 到期滚动计算
-│   ├── cache.js            # 订阅列表、付款历史与汇率本地缓存
-│   ├── constants.js        # 分类 / 货币等全局常量
-│   ├── track.js            # 埋点上报
+│   ├── config.js           # API 地址和运行配置
+│   ├── request.js          # 请求封装与登录态处理
+│   ├── helpers.js          # 金额、日期和统计计算
+│   ├── cache.js            # 本地缓存
+│   ├── constants.js        # 分类和货币常量
+│   ├── track.js            # 轻量行为埋点
 │   └── legal-content.js    # 协议文案
-├── App.vue                 # 应用入口（启动静默登录）
-├── main.js                 # 入口（Vue2/Vue3 条件编译）
-├── manifest.json           # uni-app 应用配置
-└── pages.json              # 页面路由与导航栏配置
+├── App.vue                # 应用入口
+├── main.js                # 应用入口适配
+├── manifest.json          # uni-app 与小程序配置
+└── pages.json             # 页面路由与导航栏配置
 ```
 
 ## 快速开始
 
-### 1. 运行后端
+### 环境要求
 
-归期本依赖独立后端 [subease-server-service](../../subease-server-service)。
+- [HBuilderX](https://www.dcloud.io/hbuilderx.html)
+- 微信开发者工具
+- Node.js 20+（仅运行本地测试时需要）
 
-```bash
-cd subease-server-service
-npm install
-# 在 .env 中配置数据库、JWT 与微信凭据（见下方"后端环境变量"）
-npm start        # 开发模式，默认 3001 端口
-```
+### 运行小程序
 
-### 2. 运行小程序
+1. 使用 HBuilderX 打开本目录。
+2. 在 `manifest.json` 的 `mp-weixin.appid` 中填写你自己的小程序 AppID。
+3. 根据自己的部署环境配置 `utils/subease/config.js` 中的 API 地址和订阅消息模板 ID。
+4. 使用 HBuilderX 菜单「运行 → 运行到小程序模拟器 → 微信开发者工具」。
+5. 真机预览前，在微信公众平台配置对应的 request、uploadFile 和 downloadFile 合法域名。
 
-1. 使用 **HBuilderX** 打开本目录（`uni-app/SubEase`）
-2. 菜单 `运行 → 运行到小程序模拟器 → 微信开发者工具`
-3. 首次需在微信公众平台配置：
-   - 小程序 AppID 与 `secret`（配置在 `subease-server-service/.env`）
-   - 订阅消息模板（类目"记账"，模板 ID 见 `utils/subease/config.js`）
-   - request / uploadFile / downloadFile 合法域名（线上 `https://seapi.leviqin.top`）
+部分功能依赖可用的服务接口。没有配置服务接口时，页面展示和不依赖网络的本地逻辑仍可进行开发调试，但登录、同步、提醒和反馈等功能无法正常工作。
 
-> 开发者工具中默认请求本地 `http://127.0.0.1:3001/api`；真机与线上请求 `https://seapi.leviqin.top/api`。如需切换，可在小程序内修改 `utils/subease/config.js` 或存储键 `subease-api-base-url`。
+### 运行配置说明
 
-## 付款历史（v1.4）
+| 配置位置 | 内容 | 说明 |
+|----------|------|------|
+| `manifest.json` | 小程序 AppID | 用于当前小程序项目 |
+| `utils/subease/config.js` | API 地址 | 按自己的部署环境填写 |
+| `utils/subease/config.js` | 订阅消息模板 ID | 按微信公众平台申请的模板填写 |
+| `utils/subease/config.js` | `WEEKLY_REVIEW_TEMPLATE_ID` | 不启用周报时可以留空 |
 
-付款历史入口位于订阅详情内。手动记录支持选择今天或过去日期、修改实际付款金额；提交后只顺延当前订阅一次并写入真实付款记录。自动续期任务会为跨过的每个周期写入 `auto_renew` 记录，重复扫描不会重复顺延。
+## 测试
 
-后端接口统一位于 `/api/subease/subscription`：
-
-- `POST /:id/mark-paid`：支持 `paidDate`、`amount`、`requestId`，默认今天和订阅价格；相同请求键重试不会重复顺延
-- `GET /payments`：按当前用户和日期范围查询付款历史
-- `GET /:id/payments`：查询单个订阅历史
-- `PUT /:id/payments/:paymentId`、`DELETE /:id/payments/:paymentId`：修正或删除历史，不改变下次付款日
-
-付款记录保存原币金额、付款时汇率快照和 CNY 金额。汇率不可用时保留原币记录但不伪造 1:1 折算；旧订阅没有历史记录时，报表沿用周期估算并显示提示。本版本不回填旧数据，也不支持把订阅 CSV/Excel 导入为付款历史。
-
-## 月度预算（v1.5）
-
-在「我的 → 月度预算」设置 CNY 月度额度。分析页会将本月真实付款与旧订阅估算合并对比预算，达到 80% 时提示预警，超过预算时显示超支金额；如果数据包含估算，会明确标注。节省建议为本地确定性规则生成，不会触发付款或微信推送。
-
-## 预算历史与月度复盘（v1.6）
-
-预算弹层支持选择月份，输入 0 或留空即可关闭该月份预算。分析页的「预算复盘」展示最近 6 个月预算与实际/估算支出，年度账单报告提供当年已设置月份的预算对照。v1.5 用户资料中的 `monthlyBudgetCny` 会作为当前月份的兼容回退读取，不回填历史月份。预算历史只影响提示和报告，不修改付款记录、订阅账期，也不支持分类预算或 CSV/Excel 导入。
-
-### 3. 运行管理端
+在项目根目录执行：
 
 ```bash
-cd levi-blog-admin
-npm install
-npm run dev
+node --test test/*.test.mjs
 ```
 
-## 后端环境变量（subease-server-service/.env）
-
-| 变量 | 说明 |
-|------|------|
-| `DB_HOST` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` | MySQL 连接 |
-| `JWT_SECRET` | 管理端/博客 JWT 签名密钥 |
-| `SUBEASE_ACCESS_SECRET` / `SUBEASE_REFRESH_SECRET` | 小程序 access/refresh token 密钥 |
-| `SUBEASE_WX_APPID` / `SUBEASE_WX_SECRET` | 微信小程序凭据 |
-| `SUBEASE_SUBSCRIBE_TEMPLATE_ID` | 订阅消息模板 ID（到期提醒） |
-| `SUBEASE_WEEKLY_TEMPLATE_ID` | 每周支出回顾推送模板 ID（需申请"周报/服务提醒"类模板，与前端 `WEEKLY_REVIEW_TEMPLATE_ID` 填同一个 ID） |
-| `COS_*` | 腾讯云 COS 凭据（头像上传） |
-
-> 所有密钥仅从环境变量读取，严禁硬编码；生产环境请重新生成并妥善保管。
-
-## 埋点事件
-
-`app_launch` / `login_success` / `subscribe_add` / `subscribe_delete` / `subscribe_batch_delete` / `subscribe_batch_import` / `feedback_submit` / `export_data` / `reminder_optin`，由 `utils/subease/track.js` 静默上报至 `/subease/auth/track`。
-
-## 每周支出回顾推送
-
-后端定时任务（`core/scheduler.js` 每周一 09:00）已实现；前端入口暂未开放。完整启用需完成以下配置并补齐前端授权入口：
-
-1. 在微信公众平台申请"周报/服务提醒"类订阅消息模板（字段：thing1 概况 / amount2 金额 / time3 统计周期）
-2. 将模板 ID 同时填入：
-   - 后端 `subease-server-service/.env` → `SUBEASE_WEEKLY_TEMPLATE_ID`
-   - 前端 `utils/subease/config.js` → `WEEKLY_REVIEW_TEMPLATE_ID`
-
-推送逻辑：上周一至周日 `last_paid_date` 落在区间内的扣款按用户聚合（预付周期计入本次金额，汇率折算 CNY），对已授权且有余量的用户推送；`subease_weekly_logs` 表按 (user_id, week_start) 唯一键防重复；`weekly_subscribe_remain` 记录剩余可推送次数（与到期提醒额度独立）。
+测试覆盖本地缓存隔离、日期滚动、CSV 校验、汇率缺失、付款历史和预算统计等核心逻辑。
 
 ## License
 
